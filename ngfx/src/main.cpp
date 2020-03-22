@@ -4,8 +4,8 @@
 #include <thread>
 #include "vulkan/vulkan.hpp"
 #include "glm/glm.hpp"
-#include "../../lib/Vulkan-Hpp/samples/utils/utils.hpp"
-#include "../../lib/Vulkan-Hpp/samples/utils/math.hpp"
+#include "utils.hpp"
+#include "math.hpp"
 
 
 /*

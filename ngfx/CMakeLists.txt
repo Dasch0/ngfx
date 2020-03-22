@@ -2,14 +2,12 @@
 set(
     SOURCES
         "src/main.cpp"
+        "src/math.cpp"
+        "src/utils.cpp"
 )
 add_executable(ngfx ${SOURCES})
 target_include_directories(ngfx PUBLIC "include")
-target_link_libraries(ngfx glfw glm vma utils)
-
-# Add resources
-file(COPY "assets" DESTINATION "./")
-file(COPY "shaders" DESTINATION "./")
+target_link_libraries(ngfx glfw glm Vulkan-Headers Vulkan::Vulkan)
 
 install(
     TARGETS ngfx
