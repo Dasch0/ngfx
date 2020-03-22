@@ -1,0 +1,30 @@
+[submodule "Chipmunk2D"]
+	path = Chipmunk2D
+	url = https://github.com/slembcke/Chipmunk2D
+[submodule "SFML"]
+	path = SFML
+	url = https://github.com/SFML/SFML.git
+[submodule "libzmq"]
+	path = libzmq
+	url = https://github.com/zeromq/libzmq.git
+[submodule "flatbuffers"]
+	path = flatbuffers
+	url = https://github.com/google/flatbuffers.git
+[submodule "lib/parallel-hashmap"]
+	path = lib/parallel-hashmap
+	url = https://github.com/greg7mdp/parallel-hashmap.git
+[submodule "lib/vpp"]
+	path = lib/vpp
+	url = https://github.com/nyorain/vpp.git
+[submodule "lib/Vulkan-Hpp"]
+	path = lib/Vulkan-Hpp
+	url = https://github.com/KhronosGroup/Vulkan-Hpp
+[submodule "lib/vma/VulkanMemoryAllocator-Hpp"]
+	path = lib/vma/VulkanMemoryAllocator-Hpp
+	url = https://github.com/malte-v/VulkanMemoryAllocator-Hpp
+[submodule "lib/glm"]
+	path = lib/glm
+	url = https://github.com/g-truc/glm
+[submodule "lib/glfw"]
+	path = lib/glfw
+	url = https://github.com/glfw/glfw
