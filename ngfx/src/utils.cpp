@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+// Modified from https://github.com/KhronosGroup/Vulkan-Hpp/tree/master/samples
 
 #include "utils.hpp"
 #include "vulkan/vulkan.hpp"
@@ -91,7 +92,7 @@ namespace vk
       return physicalDevice.createDeviceUnique(deviceCreateInfo);
     }
 
-    std::vector<vk::UniqueFramebuffer> createFramebuffers(vk::UniqueDevice &device, vk::UniqueRenderPass &renderPass, std::vector<vk::UniqueImageView> const& imageViews, vk::UniqueImageView const& depthImageView, vk::Extent2D const& extent)
+    std::vector<vk::UniqueFramebuffer> createFramebuffers(vk::UniqueDevice &device, vk::UniqueRenderPass const&renderPass, std::vector<vk::UniqueImageView> const& imageViews, vk::UniqueImageView const& depthImageView, vk::Extent2D const& extent)
     {
       vk::ImageView attachments[2];
       attachments[1] = depthImageView.get();
@@ -105,6 +106,24 @@ namespace vk
         framebuffers.push_back(device->createFramebufferUnique(framebufferCreateInfo));
       }
 
+      return framebuffers;
+    }
+
+    std::vector<vk::UniqueFramebuffer> createOffscreenFramebuffers(vk::UniqueDevice &device,
+                                                                   vk::UniqueRenderPass &renderPass,
+                                                                   vk::ImageView imageView,
+                                                                   vk::ImageView depthImageView,
+                                                                   vk::Extent2D const& extent)
+    {
+      // TODO: parameterize layers
+      uint32_t layers = 2;
+      vk::ImageView attachments[2];
+      attachments[0] = imageView;
+      attachments[1] = depthImageView;
+
+      vk::FramebufferCreateInfo framebufferCreateInfo(vk::FramebufferCreateFlags(), *renderPass, 2, attachments, extent.width, extent.height, layers);
+      std::vector<vk::UniqueFramebuffer> framebuffers;
+      framebuffers.push_back(device->createFramebufferUnique(framebufferCreateInfo));
       return framebuffers;
     }
 
@@ -245,6 +264,7 @@ namespace vk
 
     vk::UniqueRenderPass createRenderPass(vk::UniqueDevice &device, vk::Format colorFormat, vk::Format depthFormat, vk::AttachmentLoadOp loadOp, vk::ImageLayout colorFinalLayout)
     {
+
       std::vector<vk::AttachmentDescription> attachmentDescriptions;
       assert(colorFormat != vk::Format::eUndefined);
       attachmentDescriptions.push_back(vk::AttachmentDescription(vk::AttachmentDescriptionFlags(), colorFormat, vk::SampleCountFlagBits::e1, loadOp, vk::AttachmentStoreOp::eStore,
@@ -259,6 +279,12 @@ namespace vk
       vk::AttachmentReference depthAttachment(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
       vk::SubpassDescription subpassDescription(vk::SubpassDescriptionFlags(), vk::PipelineBindPoint::eGraphics, 0, nullptr, 1, &colorAttachment, nullptr,
         (depthFormat != vk::Format::eUndefined) ? &depthAttachment : nullptr);
+
+      uint32_t viewMask = 3;
+      vk::RenderPassMultiviewCreateInfo renderPassMultiviewInfo;
+      renderPassMultiviewInfo.subpassCount = 1;
+      renderPassMultiviewInfo.pViewMasks = &viewMask;
+
       return device->createRenderPassUnique(vk::RenderPassCreateInfo(vk::RenderPassCreateFlags(), static_cast<uint32_t>(attachmentDescriptions.size()), attachmentDescriptions.data(), 1,
                                                                      &subpassDescription));
     }

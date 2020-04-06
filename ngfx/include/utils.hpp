@@ -14,6 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+// Modified from https://github.com/KhronosGroup/Vulkan-Hpp/tree/master/samples
 
 #include "vulkan/vulkan.hpp"
 
@@ -290,7 +291,12 @@ namespace vk
     vk::UniqueDescriptorSetLayout createDescriptorSetLayout(vk::UniqueDevice const& device, std::vector<std::tuple<vk::DescriptorType, uint32_t, vk::ShaderStageFlags>> const& bindingData,
                                                             vk::DescriptorSetLayoutCreateFlags flags = {});
     vk::UniqueDevice createDevice(vk::PhysicalDevice physicalDevice, uint32_t queueFamilyIndex, std::vector<std::string> const& extensions = {}, vk::PhysicalDeviceFeatures const* physicalDeviceFeatures = nullptr, void const* pNext = nullptr);
-    std::vector<vk::UniqueFramebuffer> createFramebuffers(vk::UniqueDevice &device, vk::UniqueRenderPass &renderPass, std::vector<vk::UniqueImageView> const& imageViews, vk::UniqueImageView const& depthImageView, vk::Extent2D const& extent);
+    std::vector<vk::UniqueFramebuffer> createFramebuffers(vk::UniqueDevice &device, vk::UniqueRenderPass const&renderPass, std::vector<vk::UniqueImageView> const& imageViews, vk::UniqueImageView const& depthImageView, vk::Extent2D const& extent);
+    std::vector<vk::UniqueFramebuffer> createOffscreenFramebuffers(vk::UniqueDevice &device,
+                                                                   vk::UniqueRenderPass &renderPass,
+                                                                   vk::ImageView imageView,
+                                                                   vk::ImageView depthImageView,
+                                                                   vk::Extent2D const& extent);
     vk::UniquePipeline createGraphicsPipeline(vk::UniqueDevice const& device, vk::UniquePipelineCache const& pipelineCache,
                                               std::pair<vk::ShaderModule, vk::SpecializationInfo const*> const& vertexShaderData,
                                               std::pair<vk::ShaderModule, vk::SpecializationInfo const*> const& fragmentShaderData, uint32_t vertexStride,

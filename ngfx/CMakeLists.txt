@@ -7,7 +7,7 @@ set(
 )
 add_executable(ngfx ${SOURCES})
 target_include_directories(ngfx PUBLIC "include")
-target_link_libraries(ngfx glfw glm Vulkan-Headers Vulkan::Vulkan)
+target_link_libraries(ngfx glfw glm Vulkan-Headers Vulkan::Vulkan vma)
 
 install(
     TARGETS ngfx

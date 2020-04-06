@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+// Modified from https://github.com/KhronosGroup/Vulkan-Hpp/tree/master/samples
 
 #include <vulkan/vulkan.hpp>
 #define GLM_FORCE_RADIANS
