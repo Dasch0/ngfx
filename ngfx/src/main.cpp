@@ -7,6 +7,12 @@
 #include "utils.hpp"
 #include "math.hpp"
 #include "image.hpp"
+#include "time.h"
+
+// TODO: remove these when not needed
+#include <thread>
+#include <chrono>
+
 
 /*
  * 2d rendering library with a heavy emphasis on multiviewpoint and headless rendering, intended for use with nenbody project
@@ -112,7 +118,7 @@ namespace ngfx
             buildImages();
             buildOffscreenRenderpass();
             buildDisplayRenderpass();
-            buildFrameBuffer();
+            buildFrameBuffers();
             buildUbo();
             buildDescriptors();
             
@@ -139,14 +145,18 @@ namespace ngfx
         void draw(void)
         {
             // Get the index of the next available swapchain image:
-            vk::UniqueSemaphore imageAcquiredSemaphore = _device->createSemaphoreUnique(vk::SemaphoreCreateInfo());
-            vk::ResultValue<uint32_t> nextImage = _device->acquireNextImageKHR(_swapChainData->swapChain.get(),
+            uint32_t currentBuffer;
+            vk::Result res = _device->acquireNextImageKHR(_swapChainData->swapChain.get(),
                                                                                    vk::su::FenceTimeout,
-                                                                                   imageAcquiredSemaphore.get(),
-                                                                                   nullptr);
+                                                                                   semaphores.presentComplete.get(),
+                                                                                   nullptr,
+                                                                                   &currentBuffer);
+            _device->waitForFences(1, &_waitFences[currentBuffer].get(), 1, vk::su::FenceTimeout);
+            _device->resetFences(1, &_waitFences[currentBuffer].get());
+
             // TODO: add window resize
-            assert(nextImage.result == vk::Result::eSuccess);
-            uint32_t currentBuffer = nextImage.value;
+            assert(res == vk::Result::eSuccess);
+
 
             vk::SubmitInfo submitInfo(1,
                                       &semaphores.presentComplete.get(),
@@ -159,19 +169,14 @@ namespace ngfx
 
             _graphicsQueue.submit(1, &submitInfo, _waitFences[currentBuffer].get());
 
-            while (vk::Result::eTimeout == _device->waitForFences(
-                                                           _waitFences[currentBuffer].get(),
-                                                           VK_TRUE,
-                                                           vk::su::FenceTimeout))
-              ;
-
             // TODO: validation/window resize checking
-            _presentQueue.presentKHR(vk::PresentInfoKHR(0,
-                                                        nullptr,
+            _graphicsQueue.presentKHR(vk::PresentInfoKHR(0,
+                                                        &semaphores.renderComplete.get(),
                                                         1,
                                                         &_swapChainData->swapChain.get(),
                                                         &currentBuffer)
                                      );
+            _graphicsQueue.waitIdle();
         }
 
         void init(uint32_t width, uint32_t height)
@@ -229,9 +234,7 @@ namespace ngfx
             _waitFences.resize(_drawCmdBuffers.size());
             for (uint i = 0; i<_drawCmdBuffers.size(); i++)
             {
-                _waitFences.push_back(
-                            _device->createFenceUnique(
-                                vk::FenceCreateInfo(vk::FenceCreateFlagBits::eSignaled)));
+                _waitFences[i] = _device->createFenceUnique(vk::FenceCreateInfo());
             }
 
             _depthBufferData = new vk::su::DepthBufferData(_physicalDevice,
@@ -295,7 +298,7 @@ namespace ngfx
         vk::UniqueShaderModule _vertexShaderModule;
         vk::UniqueShaderModule _fragmentShaderModule;
         vk::UniqueShaderModule _samplerShaderModule;
-        vk::UniqueFramebuffer _displayFramebuffer;
+        std::vector<vk::UniqueFramebuffer> _displayFramebuffers;
         vk::UniqueFramebuffer _offscreenFramebuffer;
         vk::UniqueDescriptorPool _descriptorPool;
         vk::UniqueDescriptorSet _descriptorSet;
@@ -357,28 +360,30 @@ namespace ngfx
             {
                 vk::UniqueCommandBuffer &cmdBuffer = _drawCmdBuffers[i];
 
-                // First render pass: offscreen
+                // First render pass: display
                 vk::ClearValue clearValues[2];
                 clearValues[0].color = vk::ClearColorValue(std::array<float, 4>({ 0.0f, 0.0f, 0.0f, 0.0f }));
                 clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
+                cmdBuffer->begin(cmdBuffCI);
+
                 // TODO: multiple passes for different framebuffers?
-                vk::RenderPassBeginInfo renderPassBeginInfo(_offscreenRenderPass.get(),
-                                                            _offscreenFramebuffer.get(),
+                vk::RenderPassBeginInfo renderPassBeginInfo(_displayRenderPass.get(),
+                                                            _displayFramebuffers[i].get(),
                                                             vk::Rect2D(vk::Offset2D(0, 0),
-                                                                _offscreenExtent),
+                                                                _onscreenExtent),
                                                             2,
                                                             clearValues);
                 cmdBuffer->beginRenderPass(renderPassBeginInfo, vk::SubpassContents::eInline);
                 cmdBuffer->setViewport(0, vk::Viewport(0.0f,
                                                             0.0f,
-                                                            static_cast<float>(_offscreenExtent.width),
-                                                            static_cast<float>(_offscreenExtent.height),
+                                                            static_cast<float>(_onscreenExtent.width),
+                                                            static_cast<float>(_onscreenExtent.height),
                                                             0.0f,
                                                             1.0f));
-                cmdBuffer->setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), _offscreenExtent));
+                cmdBuffer->setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), _onscreenExtent));
 
-                cmdBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, _offscreenPipeline.get());
+                cmdBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics, _displayPipeline.get());
                 cmdBuffer->bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipelineLayout.get(),
                                                0,
                                                _descriptorSet.get(),
@@ -663,7 +668,7 @@ namespace ngfx
 
          }
 
-        void buildFrameBuffer(void)
+        void buildFrameBuffers(void)
         {
             vk::ImageView attachments[2] =
             {
@@ -671,16 +676,32 @@ namespace ngfx
                 _depthView.get()
             };
 
-            vk::FramebufferCreateInfo framebufferCI(vk::FramebufferCreateFlags(),
+            // Offscreen framebuffers for each target image
+            // TODO: more than one offscreen image
+            vk::FramebufferCreateInfo offscreenCI(vk::FramebufferCreateFlags(),
                                                     _offscreenRenderPass.get(),
                                                     2,
                                                     attachments,
                                                     _offscreenExtent.width,
                                                     _offscreenExtent.height,
                                                     1);
-            _offscreenFramebuffer = _device->createFramebufferUnique(framebufferCI);
+            _offscreenFramebuffer = _device->createFramebufferUnique(offscreenCI);
 
-            _displayFramebuffer = _device->createFramebufferUnique(framebufferCI);
+
+            // Display framebuffers for each swapchain image
+            _displayFramebuffers.resize(_swapChainData->images.size());
+            vk::FramebufferCreateInfo displayCI(vk::FramebufferCreateFlags(),
+                                                _displayRenderPass.get(),
+                                                2,
+                                                attachments,
+                                                _onscreenExtent.width,
+                                                _onscreenExtent.height,
+                                                1);
+            for(uint i = 0; i < _swapChainData->images.size(); i++)
+            {
+                attachments[0] = _swapChainData->imageViews[i].get();
+                _displayFramebuffers[i] = _device->createFramebufferUnique(displayCI);
+            }
 
         }
 
@@ -922,5 +943,10 @@ int main(int /*argc*/, char ** /*argv*/)
 {
     ngfx::Renderer gfx(ngfx::kTestData, sizeof(ngfx::kTestData));
 
-    while (1) gfx.draw();
+    std::chrono::milliseconds timespan(1000);
+    while (1)
+    {
+        gfx.draw();
+        std::this_thread::sleep_for(timespan);
+    }
 }
