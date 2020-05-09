@@ -46,32 +46,39 @@ namespace ngfx
       vk::Semaphore renderComplete;
     };
 
+    //TODO: Refactor along with vertex binding and attr code to make this useful
     struct Vertex {
       glm::vec2 pos;
       glm::vec3 color;
 
-      static vk::VertexInputBindingDescription getBindingDescription() {
-          vk::VertexInputBindingDescription
-              bindingDescription(0,
-                                 sizeof(Vertex),
-                                 vk::VertexInputRate::eVertex);
-          return bindingDescription;
-      }
-
-      static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions(void)
+      static vk::VertexInputBindingDescription getBindingDescription()
       {
-        std::array<vk::VertexInputAttributeDescription, 2> attributeDescriptions = {
-          vk::VertexInputAttributeDescription(0,
-                                              0,
-                                              vk::Format::eR32G32Sfloat,
-                                              offsetof(Vertex, pos)),
-          vk::VertexInputAttributeDescription(1,
-                                              0,
-                                              vk::Format::eR32G32B32Sfloat,
-                                              offsetof(Vertex, color)),
-        };
-          return attributeDescriptions;
+        vk::VertexInputBindingDescription
+            bindingDescription(0,
+                               sizeof(util::Vertex),
+                               vk::VertexInputRate::eVertex);
+        return bindingDescription;
       }
+    };
+
+    //TODO: Refactor along with vertex binding and attr code to make this useful
+    struct Instance {
+      glm::vec2 pos;
+
+      static vk::VertexInputBindingDescription getBindingDescription(void)
+      {
+        vk::VertexInputBindingDescription
+            bindingDescription(1,
+                               sizeof(util::Instance),
+                               vk::VertexInputRate::eInstance);
+        return bindingDescription;
+      }
+    };
+
+    struct Mvp {
+      glm::mat4 model;
+      glm::mat4 view;
+      glm::mat4 proj;
     };
 
     // Abstracts buffer and transfer semantics for a fast uniform/vertex buffer
@@ -204,15 +211,28 @@ namespace ngfx
     };
 
     const Vertex testVertices[] = {
-      {{-0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}},
-      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-      {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+      {{-0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}},
+      {{0.0f, 0.5f}, {0.9f, 0.9f, 0.9f}},
+      {{0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}},
     };
 
     const uint16_t testIndices[] = {
-      0, 1, 2, 2, 3, 0
+      0, 1, 2, 0
     };
+
+    const Instance testInstances[] = {
+      {{2.0, 2.0}},
+      {{2.0, 0.0}},
+      {{2.0, -2.0}},
+      {{0.0, 2.0}},
+      {{0.0, 0.0}},
+      {{0.0, -2.0}},
+      {{-2.0, 2.0}},
+      {{-2.0, 0.0}},
+      {{-2.0, -2.0}},
+    };
+
+    const uint32_t kTestInstanceCount = 9;
 
     /*
      * Internal utility functions

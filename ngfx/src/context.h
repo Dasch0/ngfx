@@ -1,9 +1,13 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
+#include <chrono>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include "ngfx.h"
 #include "config.h"
 #include "util.h"
+
 
 // TODO: Docs
 // Main class for rendering
@@ -59,12 +63,14 @@ namespace ngfx
     vk::CommandPool _commandPool;
     std::vector<vk::CommandBuffer> _commandBuffers;
 
-    // TODO: Create utils struct for vertex buffer
+    vk::DescriptorPool _descriptorPool;
+    vk::DescriptorSet _descriptorSet;
+    vk::DescriptorSetLayout _mvpLayout;
+
     util::FastBuffer _vertexBuffer;
     util::FastBuffer _indexBuffer;
-    util::FastBuffer _uniformBuffer;
-    vk::Buffer stagingBuffer;
-    vk::DeviceMemory stagingMemory;
+    util::FastBuffer _mvpBuffer;
+    util::FastBuffer _instanceBuffer;
 
 
     util::SemaphoreSet _semaphores[ngfx::kMaxFramesInFlight];
@@ -109,13 +115,15 @@ namespace ngfx
                             kWidth,
                             kHeight);
 
-      buildTriangleRenderPass();
-      buildTriangleGraphicsPipeline();
+      createTestRenderPass();
+      createTestDescriptorSetLayout();
+      buildTestGraphicsPipeline();
 
       util::createFramebuffers(&_swapData, _device, _renderPass);
       _commandPool = util::createCommandPool(_device, _qFamilies);
-
       createTestBuffers();
+      createDescriptorPool();
+      createDescriptorSets();
       buildCommandBuffers();
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
@@ -152,14 +160,18 @@ namespace ngfx
       _device.waitIdle();
     }
 
-    void cleanup()
+    void cleanup(void)
     {
       // TODO: Fix destructor ordering/dependencies so this doesn't happen
       _vertexBuffer.~FastBuffer();
       _indexBuffer.~FastBuffer();
-      _uniformBuffer.~FastBuffer();
+      _mvpBuffer.~FastBuffer();
+      _instanceBuffer.~FastBuffer();
+
+      _device.destroyDescriptorPool(_descriptorPool);
 
       cleanupSwapchain();
+      _device.destroyDescriptorSetLayout(_mvpLayout);
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
@@ -182,6 +194,7 @@ namespace ngfx
     void drawFrame()
     {
       //validateSwapchain();
+      updateTestMvp(_semaphores[_currentFrame].renderComplete);
       _device.waitForFences(1, &_inFlightFences[_currentFrame], true, UINT64_MAX);
 
       uint32_t imageIndex;
@@ -216,6 +229,7 @@ namespace ngfx
                                      nullptr);
 
       _presentQueue.presentKHR(&presentInfo);
+      _currentFrame = (_currentFrame + 1) % kMaxFramesInFlight;
     }
 
     void cleanupSwapchain(void)
@@ -258,8 +272,8 @@ namespace ngfx
                             (uint) width,
                             (uint) height);
 
-      buildTriangleRenderPass();
-      buildTriangleGraphicsPipeline();
+      createTestRenderPass();
+      buildTestGraphicsPipeline();
 
       util::createFramebuffers(&_swapData, _device, _renderPass);
       _commandPool = util::createCommandPool(_device, _qFamilies);
@@ -268,7 +282,7 @@ namespace ngfx
     }
 
     // TODO: dynamic state on viewport/scissor to speed up resize
-    void buildTriangleGraphicsPipeline(void)
+    void buildTestGraphicsPipeline(void)
     {
       auto vertShaderCode = util::readFile("shaders/vert.spv");
       auto fragShaderCode = util::readFile("shaders/frag.spv");
@@ -291,19 +305,39 @@ namespace ngfx
         fragStageCI
       };
 
-      auto bindingDesc = util::Vertex::getBindingDescription();
-      auto attributeDesc = util::Vertex::getAttributeDescriptions();
+      vk::VertexInputBindingDescription bindingDesc[] = {
+        util::Vertex::getBindingDescription(),
+        util::Instance::getBindingDescription()
+      };
+
+      // TODO: clean up vertex input attribute and binding creation
+      vk::VertexInputAttributeDescription attributeDesc[] = {
+        // Per Vertex data
+        vk::VertexInputAttributeDescription(0,
+                                            0,
+                                            vk::Format::eR32G32Sfloat,
+                                            offsetof(util::Vertex, pos)),
+        vk::VertexInputAttributeDescription(1,
+                                            0,
+                                            vk::Format::eR32G32B32Sfloat,
+                                            offsetof(util::Vertex, color)),
+        // Per Instance data
+        vk::VertexInputAttributeDescription(2,
+                                            1,
+                                            vk::Format::eR32G32Sfloat,
+                                            offsetof(util::Instance, pos)),
+      };
 
       vk::PipelineVertexInputStateCreateInfo
           vertexInputCI(vk::PipelineVertexInputStateCreateFlags(),
-                        1,
-                        &bindingDesc,
-                        (uint) attributeDesc.size(),
-                        attributeDesc.data());
+                        2,
+                        bindingDesc,
+                        3,
+                        attributeDesc);
 
       vk::PipelineInputAssemblyStateCreateInfo
           inputAssembly(vk::PipelineInputAssemblyStateCreateFlags(),
-                        vk::PrimitiveTopology::eTriangleList,
+                        vk::PrimitiveTopology::eLineStrip,
                         false);
 
       vk::Viewport viewport(0.0f,
@@ -328,7 +362,7 @@ namespace ngfx
                      false,
                      vk::PolygonMode::eFill,
                      vk::CullModeFlagBits::eBack,
-                     vk::FrontFace::eClockwise,
+                     vk::FrontFace::eCounterClockwise,
                      false,
                      0.0f,
                      0.0f,
@@ -376,8 +410,8 @@ namespace ngfx
                          dynamicStates);
 
       vk::PipelineLayoutCreateInfo pipelineLayoutCI(vk::PipelineLayoutCreateFlags(),
-                                   0,
-                                   nullptr,
+                                   1,
+                                   &_mvpLayout,
                                    0,
                                    nullptr);
 
@@ -407,7 +441,7 @@ namespace ngfx
       _device.destroyShaderModule(fragModule);
     }
 
-    void buildTriangleRenderPass(void)
+    void createTestRenderPass(void)
     {
       vk::AttachmentDescription colorAttachment(vk::AttachmentDescriptionFlags(),
                                                 _swapData.format,
@@ -455,7 +489,7 @@ namespace ngfx
       _renderPass = _device.createRenderPass(renderPassCI).value;
     }
 
-    void buildCommandBuffers()
+    void buildCommandBuffers(void)
     {
       vk::CommandBufferAllocateInfo allocInfo(_commandPool,
                                               vk::CommandBufferLevel::ePrimary,
@@ -473,9 +507,9 @@ namespace ngfx
         // TODO: Fix weird code for clearValue
         // Currently requires two sub-classes to construct
         const std::array<float, 4> clearColorPrimative = {
-          0.5f,
-          0.5f,
-          0.5f,
+          0.1f,
+          0.1f,
+          0.1f,
           1.0f
         };
         vk::ClearColorValue clearColor(clearColorPrimative);
@@ -495,17 +529,22 @@ namespace ngfx
         vk::DeviceSize offsets[] = {0};
 
         _commandBuffers[i].bindVertexBuffers(0, 1, &_vertexBuffer.localBuffer, offsets);
+        _commandBuffers[i].bindVertexBuffers(1, 1, &_instanceBuffer.localBuffer, offsets);
         _commandBuffers[i].bindIndexBuffer(_indexBuffer.localBuffer, 0, vk::IndexType::eUint16);
-        _commandBuffers[i].drawIndexed(6, 1, 0, 0, 0);
+        _commandBuffers[i].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipelineLayout, 0, 1, &_descriptorSet, 0, nullptr);
+        _commandBuffers[i].drawIndexed(4, util::kTestInstanceCount, 0, 0, 0);
         _commandBuffers[i].endRenderPass();
         _commandBuffers[i].end();
       }
     }
 
+    // TODO: use dedicated transfer queue, remove need for blocking copy
     void createTestBuffers(void)
     {
       vk::DeviceSize vertexSize = sizeof(util::testVertices);
       vk::DeviceSize indexSize = sizeof(util::testIndices);
+      vk::DeviceSize mvpSize = sizeof(util::Mvp);
+      vk::DeviceSize instanceSize = sizeof(util::testInstances);
 
       _vertexBuffer = util::FastBuffer(_device,
                                        _physicalDevice,
@@ -523,7 +562,93 @@ namespace ngfx
                                       vk::BufferUsageFlagBits::eIndexBuffer);
       _indexBuffer.init();
       _indexBuffer.stage((void *)util::testIndices);
-      _indexBuffer.blockingCopy(_graphicsQueue);
+      _indexBuffer.copy(_graphicsQueue);
+
+      _mvpBuffer = util::FastBuffer(_device,
+                                    _physicalDevice,
+                                    _commandPool,
+                                    mvpSize,
+                                    vk::BufferUsageFlagBits::eUniformBuffer);
+      _mvpBuffer.init();
+
+      _instanceBuffer = util::FastBuffer(_device,
+                                         _physicalDevice,
+                                         _commandPool,
+                                         instanceSize,
+                                         vk::BufferUsageFlagBits::eVertexBuffer);
+      _instanceBuffer.init();
+      _instanceBuffer.stage((void *)util::testInstances);
+      // Last copy is blocking
+      _instanceBuffer.blockingCopy(_graphicsQueue);
+    }
+    
+    void updateTestMvp(vk::Semaphore waitSemaphore) {
+      static auto startTime = std::chrono::high_resolution_clock::now();
+
+      auto currentTime = std::chrono::high_resolution_clock::now();
+      float time = std::chrono::duration<float, std::chrono::seconds::period>
+          (currentTime - startTime).count();
+      
+      util::Mvp mvp;
+      mvp.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f),
+                              glm::vec3(0.0f, 0.0f, 1.0f));
+      mvp.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 10.0f),
+                             glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+      mvp.proj = glm::perspective(glm::radians(90.0f),
+                                  _swapData.extent.width / (float) _swapData.extent.height, 0.1f, 100.0f);
+      mvp.proj[1][1] *= -1;
+      
+      _mvpBuffer.stage(&mvp);
+      _mvpBuffer.blockingCopy(_graphicsQueue);
+    }
+
+    // TODO: support variable number of descriptor sets
+    void createDescriptorPool(void)
+    {
+      vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer,
+                             10);
+
+      vk::DescriptorPoolCreateInfo poolInfo(vk::DescriptorPoolCreateFlags(),
+                                            10,
+                                            1,
+                                            &poolSize);
+      _descriptorPool = _device.createDescriptorPool(poolInfo);
+    }
+
+    void createTestDescriptorSetLayout(void)
+    {
+      vk::DescriptorSetLayoutBinding uboLayoutBinding(0,
+                                                      vk::DescriptorType::eUniformBuffer,
+                                                      1,
+                                                      vk::ShaderStageFlagBits::eVertex,
+                                                      nullptr);
+      vk::DescriptorSetLayoutCreateInfo layoutCI(vk::DescriptorSetLayoutCreateFlags(),
+                                                 1,
+                                                 &uboLayoutBinding);
+
+      _mvpLayout = _device.createDescriptorSetLayout(layoutCI).value;
+    }
+
+    void createDescriptorSets(void)
+    {
+      vk::DescriptorSetAllocateInfo allocInfo(_descriptorPool,
+                                              1,
+                                              &_mvpLayout);
+
+      _device.allocateDescriptorSets(&allocInfo, &_descriptorSet);
+
+      vk::DescriptorBufferInfo bufferInfo(_mvpBuffer.localBuffer,
+                               0,
+                               sizeof(util::Mvp));
+      vk::WriteDescriptorSet descWrite(_descriptorSet,
+                                       0,
+                                       0,
+                                       1,
+                                       vk::DescriptorType::eUniformBuffer,
+                                       nullptr,
+                                       &bufferInfo,
+                                       nullptr);
+      _device.updateDescriptorSets(1, &descWrite, 0, nullptr);
     }
   };
 }
