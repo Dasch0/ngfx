@@ -1,8 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "ngfx.h"
-#include "config.h"
+#include "ngfx.hpp"
+#include "config.hpp"
 
 namespace ngfx
 {
@@ -144,7 +144,8 @@ namespace ngfx
             util::findMemoryType(*phys,
                                  stagingReqs.memoryTypeBits,
                                  vk::MemoryPropertyFlagBits::eHostVisible
-                                 | vk::MemoryPropertyFlagBits::eHostCoherent);
+                                 | vk::MemoryPropertyFlagBits::eHostCoherent
+                                 | vk::MemoryPropertyFlagBits::eHostCached);
         uint32_t localIndex =
             util::findMemoryType(*phys,
                                  localReqs.memoryTypeBits,
@@ -167,18 +168,18 @@ namespace ngfx
                                              nullptr);
         commandBuffer.begin(beginInfo);
         vk::BufferCopy copyRegion(0, 0, size);
-        commandBuffer.copyBuffer(stagingBuffer, localBuffer, 1, &copyRegion);
+        commandBuffer.copyBuffer(stagingBuffer, localBuffer, 1, (const vk::BufferCopy *) &copyRegion);
         commandBuffer.end();
+
+        // Map memory
+        device->mapMemory(stagingMemory, 0, size, vk::MemoryMapFlags(), &_handle);
         valid = true;
       }
 
       void stage(void* data)
       {
         assert(valid);
-        void  *mapRef;
-        device->mapMemory(stagingMemory, 0, size, vk::MemoryMapFlags(), &mapRef);
-        memcpy(mapRef, data, size);
-        device->unmapMemory(stagingMemory);
+        memcpy(_handle, data, size);
       }
 
       // TODO: add fences for external sync
@@ -201,12 +202,36 @@ namespace ngfx
       {
         if (valid)
         {
-          device->freeCommandBuffers(*pool, 1, &commandBuffer);
+          device->unmapMemory(stagingMemory);
+          device->freeCommandBuffers(*pool, 1, (const vk::CommandBuffer *)&commandBuffer);
           device->freeMemory(stagingMemory);
           device->freeMemory(localMemory);
           device->destroyBuffer(stagingBuffer);
           device->destroyBuffer(localBuffer);
         }
+      }
+    private:
+      void *_handle;
+    };
+
+    template<uint size>
+    struct LayeredFbAttachment
+    {
+    public:
+      vk::Image image;
+      vk::ImageView view[size];
+      vk::DeviceMemory mem;
+      bool valid;
+
+      LayeredFbAttachment(void) : valid(false) {};
+
+      // TODO: support variable image CI's
+      void init(void)
+      {
+        vk::ImageCreateInfo imageCI(vk::ImageCreateFlags(),
+                                    vk::ImageType::e2D,
+                                    vk::Format::eB8G8R8Srgb,
+                                    vk::Extent3D)
       }
     };
 

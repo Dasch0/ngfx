@@ -1,0 +1,87 @@
+[
+{
+  "directory": "/media/data/git/ngfx/build/ngfx",
+  "command": "/usr/bin/g++  -DVK_USE_PLATFORM_XCB_KHR=1 -I/home/das/git/ngfx/ngfx/include -I/home/das/git/ngfx/ngfx/Vulkan::Vulkan -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glm/glm/..  -g   -std=gnu++17 -o CMakeFiles/ngfx.dir/src/main.cpp.o -c /home/das/git/ngfx/ngfx/src/main.cpp",
+  "file": "/home/das/git/ngfx/ngfx/src/main.cpp"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/context.c.o   -c /home/das/git/ngfx/lib/glfw/src/context.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/context.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/init.c.o   -c /home/das/git/ngfx/lib/glfw/src/init.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/init.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/input.c.o   -c /home/das/git/ngfx/lib/glfw/src/input.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/input.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/monitor.c.o   -c /home/das/git/ngfx/lib/glfw/src/monitor.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/monitor.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/vulkan.c.o   -c /home/das/git/ngfx/lib/glfw/src/vulkan.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/vulkan.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/window.c.o   -c /home/das/git/ngfx/lib/glfw/src/window.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/window.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/x11_init.c.o   -c /home/das/git/ngfx/lib/glfw/src/x11_init.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/x11_init.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/x11_monitor.c.o   -c /home/das/git/ngfx/lib/glfw/src/x11_monitor.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/x11_monitor.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/x11_window.c.o   -c /home/das/git/ngfx/lib/glfw/src/x11_window.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/x11_window.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/xkb_unicode.c.o   -c /home/das/git/ngfx/lib/glfw/src/xkb_unicode.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/xkb_unicode.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/posix_time.c.o   -c /home/das/git/ngfx/lib/glfw/src/posix_time.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/posix_time.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/posix_thread.c.o   -c /home/das/git/ngfx/lib/glfw/src/posix_thread.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/posix_thread.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/glx_context.c.o   -c /home/das/git/ngfx/lib/glfw/src/glx_context.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/glx_context.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/egl_context.c.o   -c /home/das/git/ngfx/lib/glfw/src/egl_context.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/egl_context.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -Wdeclaration-after-statement -o CMakeFiles/glfw.dir/osmesa_context.c.o   -c /home/das/git/ngfx/lib/glfw/src/osmesa_context.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/osmesa_context.c"
+},
+{
+  "directory": "/media/data/git/ngfx/build/lib/glfw/src",
+  "command": "/usr/bin/gcc -DVK_USE_PLATFORM_XCB_KHR=1 -D_GLFW_USE_CONFIG_H -I/home/das/git/ngfx/lib/glfw/include -I/home/das/git/ngfx/lib/glfw/src -I/media/data/git/ngfx/build/lib/glfw/src  -g -fPIC   -Wall -pthread -std=c99 -o CMakeFiles/glfw.dir/linux_joystick.c.o   -c /home/das/git/ngfx/lib/glfw/src/linux_joystick.c",
+  "file": "/home/das/git/ngfx/lib/glfw/src/linux_joystick.c"
+}
+]

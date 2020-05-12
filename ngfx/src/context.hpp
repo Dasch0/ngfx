@@ -4,9 +4,9 @@
 #include <chrono>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include "ngfx.h"
-#include "config.h"
-#include "util.h"
+#include "ngfx.hpp"
+#include "config.hpp"
+#include "util.hpp"
 
 
 // TODO: Docs
@@ -209,7 +209,7 @@ namespace ngfx
       }
       _swapData.fences[imageIndex] = _inFlightFences[_currentFrame];
 
-      _device.resetFences(1, &_inFlightFences[_currentFrame]);
+      _device.resetFences(1, (const vk::Fence *)&_inFlightFences[_currentFrame]);
 
       vk::PipelineStageFlags waitStages(vk::PipelineStageFlagBits::eColorAttachmentOutput);
       vk::SubmitInfo submitInfo(1,
@@ -240,7 +240,7 @@ namespace ngfx
       }
       _device.freeCommandBuffers(_commandPool,
                                  (uint) _commandBuffers.size(),
-                                 _commandBuffers.data());
+                                 (const vk::CommandBuffer *)_commandBuffers.data());
       _device.destroyPipeline(_graphicsPipeline);
       _device.destroyRenderPass(_renderPass);
       _device.destroyPipelineLayout(_pipelineLayout);
@@ -528,10 +528,22 @@ namespace ngfx
 
         vk::DeviceSize offsets[] = {0};
 
-        _commandBuffers[i].bindVertexBuffers(0, 1, &_vertexBuffer.localBuffer, offsets);
-        _commandBuffers[i].bindVertexBuffers(1, 1, &_instanceBuffer.localBuffer, offsets);
+        _commandBuffers[i].bindVertexBuffers(0,
+                                             1,
+                                             &_vertexBuffer.localBuffer,
+                                             (const vk::DeviceSize *) offsets);
+        _commandBuffers[i].bindVertexBuffers(1,
+                                             1,
+                                             &_instanceBuffer.localBuffer,
+                                             (const vk::DeviceSize *) offsets);
         _commandBuffers[i].bindIndexBuffer(_indexBuffer.localBuffer, 0, vk::IndexType::eUint16);
-        _commandBuffers[i].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipelineLayout, 0, 1, &_descriptorSet, 0, nullptr);
+        _commandBuffers[i].bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                              _pipelineLayout,
+                                              0,
+                                              1,
+                                              &_descriptorSet,
+                                              0,
+                                              nullptr);
         _commandBuffers[i].drawIndexed(4, util::kTestInstanceCount, 0, 0, 0);
         _commandBuffers[i].endRenderPass();
         _commandBuffers[i].end();
@@ -582,6 +594,7 @@ namespace ngfx
       _instanceBuffer.blockingCopy(_graphicsQueue);
     }
     
+    // TODO: Use waitSemaphore
     void updateTestMvp(vk::Semaphore waitSemaphore) {
       static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -640,6 +653,7 @@ namespace ngfx
       vk::DescriptorBufferInfo bufferInfo(_mvpBuffer.localBuffer,
                                0,
                                sizeof(util::Mvp));
+
       vk::WriteDescriptorSet descWrite(_descriptorSet,
                                        0,
                                        0,

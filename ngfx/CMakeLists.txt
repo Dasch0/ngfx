@@ -2,10 +2,10 @@
 set(
     SOURCES
         "src/main.cpp"
-        "src/ngfx.h"
-        "src/config.h"
-        "src/util.h"
-        "src/context.h"
+        "src/ngfx.hpp"
+        "src/config.hpp"
+        "src/util.hpp"
+        "src/context.hpp"
 )
 add_executable(ngfx ${SOURCES})
 target_include_directories(ngfx PUBLIC "include")

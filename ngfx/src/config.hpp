@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "ngfx.h"
+#include "ngfx.hpp"
 
 namespace ngfx
 {

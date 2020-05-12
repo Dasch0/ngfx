@@ -9,10 +9,10 @@
  * https://vulkan-tutorial.com/en/
  */
 
-#include "ngfx.h"
-#include "config.h"
-#include "context.h"
-#include "util.h"
+#include "ngfx.hpp"
+#include "config.hpp"
+#include "context.hpp"
+#include "util.hpp"
 
 int main() {
   ngfx::Context app;
