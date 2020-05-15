@@ -22,6 +22,7 @@ namespace ngfx
     bool resizable;
     bool vsync;
 
+    // TODO: configurable vsync and resize
     Context() : resizable(false), vsync(true), _currentFrame(0) {}
 
     void init(void)
@@ -40,7 +41,6 @@ namespace ngfx
     }
 
   private:
-    // TODO: use hpp class for extension based types if possible
     GLFWwindow* _window;
     vk::Instance _instance;
     VkDebugUtilsMessengerEXT _primativeDebugMessenger;
@@ -72,10 +72,12 @@ namespace ngfx
     util::FastBuffer _mvpBuffer;
     util::FastBuffer _instanceBuffer;
 
-
     util::SemaphoreSet _semaphores[ngfx::kMaxFramesInFlight];
     vk::Fence _inFlightFences[ngfx::kMaxFramesInFlight];
     uint32_t _currentFrame;
+
+    util::Fbo _offscreenFbo;
+    vk::Sampler _sampler;
 
     void initWindow(int width, int height)
     {
@@ -123,13 +125,15 @@ namespace ngfx
       _commandPool = util::createCommandPool(_device, _qFamilies);
       createTestBuffers();
       createDescriptorPool();
-      createDescriptorSets();
+      createTestDescriptorSets();
       buildCommandBuffers();
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
-        _semaphores[i].imageAvailable = _device.createSemaphore(vk::SemaphoreCreateInfo()).value;
-        _semaphores[i].renderComplete = _device.createSemaphore(vk::SemaphoreCreateInfo()).value;
+        _semaphores[i].imageAvailable =
+                _device.createSemaphore(vk::SemaphoreCreateInfo()).value;
+        _semaphores[i].renderComplete =
+                _device.createSemaphore(vk::SemaphoreCreateInfo()).value;
         vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);
         _inFlightFences[i] = _device.createFence(fenceCI).value;
       }
@@ -149,8 +153,8 @@ namespace ngfx
         // Measure speed
         double currentTime = glfwGetTime();
         nbFrames++;
-        if ( currentTime - lastTime >= 1.0 ){ // If last prinf() was more than 1 sec ago
-          // printf and reset timer
+        if ( currentTime - lastTime >= 1.0 )
+        {
           printf("%f ms/frame: \n", 1000.0/double(nbFrames));
           nbFrames = 0;
           lastTime += 1.0;
@@ -453,8 +457,9 @@ namespace ngfx
                                                 vk::ImageLayout::eUndefined,
                                                 vk::ImageLayout::ePresentSrcKHR);
 
-      vk::AttachmentReference colorAttachmentRef(0,
-                                                 vk::ImageLayout::eColorAttachmentOptimal);
+      vk::AttachmentReference
+              colorAttachmentRef(0,
+                                 vk::ImageLayout::eColorAttachmentOptimal);
 
       vk::SubpassDescription subpass(vk::SubpassDescriptionFlags(),
                                      vk::PipelineBindPoint::eGraphics,
@@ -536,7 +541,9 @@ namespace ngfx
                                              1,
                                              &_instanceBuffer.localBuffer,
                                              (const vk::DeviceSize *) offsets);
-        _commandBuffers[i].bindIndexBuffer(_indexBuffer.localBuffer, 0, vk::IndexType::eUint16);
+        _commandBuffers[i].bindIndexBuffer(_indexBuffer.localBuffer,
+                                           0,
+                                            vk::IndexType::eUint16);
         _commandBuffers[i].bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                               _pipelineLayout,
                                               0,
@@ -606,9 +613,13 @@ namespace ngfx
       mvp.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f),
                               glm::vec3(0.0f, 0.0f, 1.0f));
       mvp.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 10.0f),
-                             glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+                             glm::vec3(0.0f, 0.0f, 0.0f),
+                             glm::vec3(0.0f, 0.0f, 1.0f));
       mvp.proj = glm::perspective(glm::radians(90.0f),
-                                  _swapData.extent.width / (float) _swapData.extent.height, 0.1f, 100.0f);
+                                  _swapData.extent.width
+                                  / (float) _swapData.extent.height,
+                                  0.1f,
+                                  100.0f);
       mvp.proj[1][1] *= -1;
       
       _mvpBuffer.stage(&mvp);
@@ -625,7 +636,7 @@ namespace ngfx
                                             10,
                                             1,
                                             &poolSize);
-      _descriptorPool = _device.createDescriptorPool(poolInfo);
+      _device.createDescriptorPool(&poolInfo, nullptr, &_descriptorPool);
     }
 
     void createTestDescriptorSetLayout(void)
@@ -642,7 +653,7 @@ namespace ngfx
       _mvpLayout = _device.createDescriptorSetLayout(layoutCI).value;
     }
 
-    void createDescriptorSets(void)
+    void createTestDescriptorSets(void)
     {
       vk::DescriptorSetAllocateInfo allocInfo(_descriptorPool,
                                               1,
@@ -664,6 +675,74 @@ namespace ngfx
                                        nullptr);
       _device.updateDescriptorSets(1, &descWrite, 0, nullptr);
     }
+
+    void createTestOffscreenFbo(void)
+    {
+      uint w = 256;
+      uint h = 256;
+      vk::Image *i = &_offscreenFbo.image;
+      vk::DeviceMemory *m = &_offscreenFbo.mem;
+      vk::ImageView *v = &_offscreenFbo.view;
+
+      vk::ImageCreateInfo imageCI(vk::ImageCreateFlags(),
+                                  vk::ImageType::e2D,
+                                  vk::Format::eR8G8B8A8Srgb,
+                                  vk::Extent3D(w, h, 1),
+                                  1,
+                                  1,
+                                  vk::SampleCountFlagBits::e1,
+                                  vk::ImageTiling::eOptimal,
+                                  vk::ImageUsageFlagBits::eColorAttachment
+                                  | vk::ImageUsageFlagBits::eSampled
+                                  | vk::ImageUsageFlagBits::eTransferSrc,
+                                  vk::SharingMode::eExclusive);
+      _device.createImage(&imageCI, nullptr, i);
+
+      vk::MemoryRequirements memReqs;
+      _device.getImageMemoryRequirements(*i, &memReqs);
+      auto memType = util::findMemoryType(_physicalDevice,
+                           memReqs.memoryTypeBits,
+                           vk::MemoryPropertyFlagBits::eDeviceLocal);
+      vk::MemoryAllocateInfo allocInfo(memReqs.size, memType);
+      _device.allocateMemory(&allocInfo, nullptr, m);
+      _device.bindImageMemory(*i, *m, 0);
+
+      vk::ImageViewCreateInfo viewCI(vk::ImageViewCreateFlags(),
+                                     *i,
+                                     vk::ImageViewType::e2D,
+                                     vk::Format::eR8G8B8Srgb,
+                                     vk::ComponentMapping(),
+                                     vk::ImageSubresourceRange(
+                                       vk::ImageAspectFlagBits::eColor,
+                                       0, //baseMipLevel
+                                       1, //levelCount
+                                       0, //baseArrayLayer
+                                       1) //layerCount
+                                     );
+      _device.createImageView(&viewCI, nullptr, v);
+    }
+
+    void createTextureSampler()
+    {
+      vk::SamplerCreateInfo samplerCI(vk::SamplerCreateFlags(),
+                                      vk::Filter::eLinear,
+                                      vk::Filter::eLinear,
+                                      vk::SamplerMipmapMode::eLinear,
+                                      vk::SamplerAddressMode::eRepeat,
+                                      vk::SamplerAddressMode::eRepeat,
+                                      vk::SamplerAddressMode::eRepeat,
+                                      0.0f,
+                                      false,
+                                      1.0f, // TODO: support anisotropy levels
+                                      false,
+                                      vk::CompareOp::eAlways,
+                                      0.0f,
+                                      0.0f,
+                                      vk::BorderColor::eIntOpaqueWhite,
+                                      false);
+      _device.createSampler(samplerCI, nullptr, &_sampler);
+    }
+
   };
 }
 #endif // CONTEXT_H
