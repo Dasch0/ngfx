@@ -215,24 +215,13 @@ namespace ngfx
     };
 
     template<uint size>
-    struct LayeredFbAttachment
+    struct LayeredFbo
     {
     public:
       vk::Image image;
       vk::ImageView view[size];
       vk::DeviceMemory mem;
-      bool valid;
-
-      LayeredFbAttachment(void) : valid(false) {};
-
-      // TODO: support variable image CI's
-      void init(void)
-      {
-        vk::ImageCreateInfo imageCI(vk::ImageCreateFlags(),
-                                    vk::ImageType::e2D,
-                                    vk::Format::eB8G8R8Srgb,
-                                    vk::Extent3D)
-      }
+      vk::Framebuffer frame[size];
     };
 
     const Vertex testVertices[] = {
