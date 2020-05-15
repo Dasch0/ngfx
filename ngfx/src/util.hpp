@@ -214,14 +214,13 @@ namespace ngfx
       void *_handle;
     };
 
-    template<uint size>
-    struct LayeredFbo
+    struct Fbo
     {
     public:
       vk::Image image;
-      vk::ImageView view[size];
+      vk::ImageView view;
       vk::DeviceMemory mem;
-      vk::Framebuffer frame[size];
+      vk::Framebuffer frame;
     };
 
     const Vertex testVertices[] = {
