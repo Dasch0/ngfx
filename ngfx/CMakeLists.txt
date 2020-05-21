@@ -7,11 +7,12 @@ set(
         "src/util.hpp"
         "src/context.hpp"
 )
+
+
 add_executable(ngfx ${SOURCES})
 target_include_directories(ngfx PUBLIC "include")
 target_include_directories(ngfx PRIVATE Vulkan::Vulkan)
 target_link_libraries(ngfx glfw glm Vulkan::Vulkan)
-
 
 # Add resources
 file(COPY "assets" DESTINATION "./")

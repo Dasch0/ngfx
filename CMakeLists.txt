@@ -9,8 +9,11 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Generate YCM compile_commands.jsom file
+# Generate compile_commands.jsom file
 set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
+
+# Convert relative paths
+cmake_policy(SET CMP0076 NEW)
 
 # Make sure freetype is pulled in
 find_package(Freetype REQUIRED)
@@ -45,13 +48,3 @@ endif()
 add_subdirectory("ngfx")
 add_subdirectory("lib/glfw")
 add_subdirectory("lib/glm")
-
-# Copy compile_commands.json to source directory if needed
-add_custom_target(
-    copy-compile-commands ALL
-    ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_BINARY_DIR}/compile_commands.json
-        ${PROJECT_SOURCE_DIR}
-    )
-
-
