@@ -4,13 +4,13 @@
 #include <chrono>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <vulkan/vulkan.hpp>
 #include "ngfx.hpp"
 #include "config.hpp"
 #include "util.hpp"
 
-
 // TODO: Docs
-// Main class for rendering
+
 namespace ngfx
 {
   class Context
@@ -65,7 +65,7 @@ namespace ngfx
 
     vk::DescriptorPool _descriptorPool;
     vk::DescriptorSet _descriptorSet;
-    vk::DescriptorSetLayout _mvpLayout;
+    std::array<vk::DescriptorSetLayout, 2> _descLayouts;
 
     util::FastBuffer _vertexBuffer;
     util::FastBuffer _indexBuffer;
@@ -119,6 +119,8 @@ namespace ngfx
 
       createTestRenderPass();
       createTestDescriptorSetLayout();
+      createTextureSampler();
+      createTestOffscreenFbo();
       buildTestGraphicsPipeline();
 
       util::createFramebuffers(&_swapData, _device, _renderPass);
@@ -130,16 +132,17 @@ namespace ngfx
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
-        _semaphores[i].imageAvailable =
-                _device.createSemaphore(vk::SemaphoreCreateInfo()).value;
-        _semaphores[i].renderComplete =
-                _device.createSemaphore(vk::SemaphoreCreateInfo()).value;
+        vk::SemaphoreCreateInfo semaphoreCI;
+        _device.createSemaphore(&semaphoreCI,
+                                nullptr,
+                                &_semaphores[i].imageAvailable);
+        _device.createSemaphore(&semaphoreCI,
+                                nullptr,
+                                &_semaphores[i].renderComplete);
         vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);
-        _inFlightFences[i] = _device.createFence(fenceCI).value;
+        _device.createFence(&fenceCI, nullptr, &_inFlightFences[i]);
       }
       _swapData.fences.resize(_swapData.images.size(), vk::Fence(nullptr));
-
-
     }
 
     // TODO: pull loop out of Context class
@@ -149,13 +152,13 @@ namespace ngfx
       int nbFrames = 0;
       while (!glfwWindowShouldClose(_window))
       {
-        glfwPollEvents();
+
         // Measure speed
         double currentTime = glfwGetTime();
         nbFrames++;
         if ( currentTime - lastTime >= 1.0 )
         {
-          printf("%f ms/frame: \n", 1000.0/double(nbFrames));
+          printf("%f ms/frame: \n", 1000.0 / double(nbFrames));
           nbFrames = 0;
           lastTime += 1.0;
         }
@@ -175,7 +178,8 @@ namespace ngfx
       _device.destroyDescriptorPool(_descriptorPool);
 
       cleanupSwapchain();
-      _device.destroyDescriptorSetLayout(_mvpLayout);
+      _device.destroyDescriptorSetLayout(_descLayouts[0]);
+      _device.destroyDescriptorSetLayout(_descLayouts[1]);
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
@@ -200,7 +204,7 @@ namespace ngfx
       //validateSwapchain();
       updateTestMvp(_semaphores[_currentFrame].renderComplete);
       _device.waitForFences(1, &_inFlightFences[_currentFrame], true, UINT64_MAX);
-
+      
       uint32_t imageIndex;
       _device.acquireNextImageKHR(_swapData.swapchain,
                                   UINT64_MAX,
@@ -325,8 +329,12 @@ namespace ngfx
                                             0,
                                             vk::Format::eR32G32B32Sfloat,
                                             offsetof(util::Vertex, color)),
-        // Per Instance data
         vk::VertexInputAttributeDescription(2,
+                                            0,
+                                            vk::Format::eR32G32Sfloat,
+                                            offsetof(util::Vertex, texCoord)), 
+        // Per Instance data
+        vk::VertexInputAttributeDescription(3,
                                             1,
                                             vk::Format::eR32G32Sfloat,
                                             offsetof(util::Instance, pos)),
@@ -336,7 +344,7 @@ namespace ngfx
           vertexInputCI(vk::PipelineVertexInputStateCreateFlags(),
                         2,
                         bindingDesc,
-                        3,
+                        4,
                         attributeDesc);
 
       vk::PipelineInputAssemblyStateCreateInfo
@@ -413,13 +421,14 @@ namespace ngfx
                          2,
                          dynamicStates);
 
-      vk::PipelineLayoutCreateInfo pipelineLayoutCI(vk::PipelineLayoutCreateFlags(),
-                                   1,
-                                   &_mvpLayout,
-                                   0,
-                                   nullptr);
+      vk::PipelineLayoutCreateInfo 
+        pipelineLayoutCI(vk::PipelineLayoutCreateFlags(),
+                         _descLayouts.size(),
+                         _descLayouts.data(),
+                         0,
+                         nullptr);
 
-      _pipelineLayout = _device.createPipelineLayout(pipelineLayoutCI).value;
+      _device.createPipelineLayout(&pipelineLayoutCI, nullptr, &_pipelineLayout);
 
       vk::GraphicsPipelineCreateInfo pipelineCI(vk::PipelineCreateFlags(),
                                                 2,
@@ -491,7 +500,7 @@ namespace ngfx
                                             1,
                                             &subpassDependency);
 
-      _renderPass = _device.createRenderPass(renderPassCI).value;
+      _device.createRenderPass(&renderPassCI, nullptr, &_renderPass);
     }
 
     void buildCommandBuffers(void)
@@ -499,9 +508,7 @@ namespace ngfx
       vk::CommandBufferAllocateInfo allocInfo(_commandPool,
                                               vk::CommandBufferLevel::ePrimary,
                                               (uint) _swapData.framebuffers.size());
-
-      // TODO: Fix copy
-      _commandBuffers = _device.allocateCommandBuffers(allocInfo).value;
+      _device.allocateCommandBuffers(&allocInfo, _commandBuffers.data());
 
       for (size_t i = 0; i < _commandBuffers.size(); i++)
       {
@@ -629,51 +636,81 @@ namespace ngfx
     // TODO: support variable number of descriptor sets
     void createDescriptorPool(void)
     {
-      vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer,
-                             10);
+      vk::DescriptorPoolSize poolSize[] = {
+        vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, 1),
+        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1),
+      };
 
       vk::DescriptorPoolCreateInfo poolInfo(vk::DescriptorPoolCreateFlags(),
-                                            10,
-                                            1,
-                                            &poolSize);
+                                            2, // TODO: Learn what maxSets is used for
+                                            2,
+                                            poolSize);
       _device.createDescriptorPool(&poolInfo, nullptr, &_descriptorPool);
     }
 
     void createTestDescriptorSetLayout(void)
     {
-      vk::DescriptorSetLayoutBinding uboLayoutBinding(0,
-                                                      vk::DescriptorType::eUniformBuffer,
-                                                      1,
-                                                      vk::ShaderStageFlagBits::eVertex,
-                                                      nullptr);
-      vk::DescriptorSetLayoutCreateInfo layoutCI(vk::DescriptorSetLayoutCreateFlags(),
-                                                 1,
-                                                 &uboLayoutBinding);
-
-      _mvpLayout = _device.createDescriptorSetLayout(layoutCI).value;
+      vk::DescriptorSetLayoutBinding
+        uboLayoutBinding(0,
+                         vk::DescriptorType::eUniformBuffer,
+                         1,
+                         vk::ShaderStageFlagBits::eVertex,
+                         nullptr);
+      vk::DescriptorSetLayoutBinding 
+        samplerLayoutBinding(1,
+                             vk::DescriptorType::eCombinedImageSampler,
+                             1,
+                             vk::ShaderStageFlagBits::eFragment, 
+                             nullptr);
+      
+      vk::DescriptorSetLayoutCreateInfo
+        uboLayoutCI(vk::DescriptorSetLayoutCreateFlags(),
+                 1,
+                 &uboLayoutBinding); 
+      vk::DescriptorSetLayoutCreateInfo
+        samplerLayoutCI(vk::DescriptorSetLayoutCreateFlags(),
+                 1,
+                 &samplerLayoutBinding);
+      _device.createDescriptorSetLayout(&uboLayoutCI, nullptr, &_descLayouts[0]);
+      _device.createDescriptorSetLayout(&samplerLayoutCI, nullptr, &_descLayouts[1]);
+ 
     }
 
     void createTestDescriptorSets(void)
     {
       vk::DescriptorSetAllocateInfo allocInfo(_descriptorPool,
-                                              1,
-                                              &_mvpLayout);
+                                              _descLayouts.size(),
+                                              _descLayouts.data());
 
       _device.allocateDescriptorSets(&allocInfo, &_descriptorSet);
 
       vk::DescriptorBufferInfo bufferInfo(_mvpBuffer.localBuffer,
                                0,
                                sizeof(util::Mvp));
+      vk::DescriptorImageInfo imageInfo(_sampler,
+                                        _offscreenFbo.view,
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
 
-      vk::WriteDescriptorSet descWrite(_descriptorSet,
-                                       0,
-                                       0,
-                                       1,
-                                       vk::DescriptorType::eUniformBuffer,
-                                       nullptr,
-                                       &bufferInfo,
-                                       nullptr);
-      _device.updateDescriptorSets(1, &descWrite, 0, nullptr);
+      vk::WriteDescriptorSet descWrite[] = { 
+        vk::WriteDescriptorSet(_descriptorSet,
+                               0,
+                               0,
+                               1,
+                               vk::DescriptorType::eUniformBuffer,
+                               nullptr,
+                               &bufferInfo,
+                               nullptr),
+        vk::WriteDescriptorSet(_descriptorSet,
+                               1,
+                               0,
+                               1,
+                               vk::DescriptorType::eCombinedImageSampler,
+                               &imageInfo,
+                               nullptr,
+                               nullptr)
+      };
+
+      _device.updateDescriptorSets(2, descWrite, 0, nullptr);
     }
 
     void createTestOffscreenFbo(void)
@@ -710,14 +747,14 @@ namespace ngfx
       vk::ImageViewCreateInfo viewCI(vk::ImageViewCreateFlags(),
                                      *i,
                                      vk::ImageViewType::e2D,
-                                     vk::Format::eR8G8B8Srgb,
+                                     vk::Format::eR8G8B8A8Srgb,
                                      vk::ComponentMapping(),
                                      vk::ImageSubresourceRange(
-                                       vk::ImageAspectFlagBits::eColor,
-                                       0, //baseMipLevel
-                                       1, //levelCount
-                                       0, //baseArrayLayer
-                                       1) //layerCount
+                                     vk::ImageAspectFlagBits::eColor,
+                                     0, //baseMipLevel
+                                     1, //levelCount
+                                     0, //baseArrayLayer
+                                     1) //layerCount
                                      );
       _device.createImageView(&viewCI, nullptr, v);
     }
@@ -740,9 +777,8 @@ namespace ngfx
                                       0.0f,
                                       vk::BorderColor::eIntOpaqueWhite,
                                       false);
-      _device.createSampler(samplerCI, nullptr, &_sampler);
+      _device.createSampler(&samplerCI, nullptr, &_sampler);
     }
-
   };
 }
 #endif // CONTEXT_H

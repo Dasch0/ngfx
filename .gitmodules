@@ -4,6 +4,3 @@
 [submodule "lib/glfw"]
 	path = lib/glfw
 	url = https://github.com/glfw/glfw
-[submodule "lib/gli"]
-	path = lib/gli
-	url = https://github.com/g-truc/gli

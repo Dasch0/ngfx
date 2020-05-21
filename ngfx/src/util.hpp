@@ -47,9 +47,11 @@ namespace ngfx
     };
 
     //TODO: Refactor along with vertex binding and attr code to make this useful
+    //TODO: AOSOA layout
     struct Vertex {
       glm::vec2 pos;
       glm::vec3 color;
+      glm::vec2 texCoord;
 
       static vk::VertexInputBindingDescription getBindingDescription()
       {
@@ -224,9 +226,9 @@ namespace ngfx
     };
 
     const Vertex testVertices[] = {
-      {{-0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}},
-      {{0.0f, 0.5f}, {0.9f, 0.9f, 0.9f}},
-      {{0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}},
+      {{-0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 0.0f}},
+      {{0.0f, 0.5f}, {0.9f, 0.9f, 0.9f}, {1.0f, 0.0f}},
+      {{0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {1.0f, 1.0f}},
     };
 
     const uint16_t testIndices[] = {
@@ -248,7 +250,7 @@ namespace ngfx
     const uint32_t kTestInstanceCount = 9;
 
     /*
-     * Internal utility functions
+     * TODO: Organize static vs externed functions
      */
 
     static std::vector<const char*> getRequiredExtensions(bool debug)
