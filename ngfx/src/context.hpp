@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_core.h>
 #include "ngfx.hpp"
 #include "config.hpp"
 #include "util.hpp"
@@ -13,59 +14,242 @@
 
 namespace ngfx
 {
-  class Context
+  struct Context
   {
-  public:
+    // TODO: implement resizability & vsync
     static const uint32_t kWidth = 800;
     static const uint32_t kHeight = 600;
-    // TODO: implement proper resizability
-    bool resizable;
-    bool vsync;
+    static const bool kResizable = false;
+    static const bool kVsync = false;
 
-    // TODO: configurable vsync and resize
-    Context() : resizable(false), vsync(true), _currentFrame(0) {}
+    GLFWwindow *window;
+    vk::Instance instance;
+    vk::DebugUtilsMessengerEXT debugMessenger;
+    vk::SurfaceKHR surface;
+    VkSurfaceKHR primativeSurface;
+
+    vk::PhysicalDevice physicalDevice;
+    vk::Device device;
+    util::QueueFamilyIndices qFamilies;
+    vk::Queue presentQueue;
+    vk::Queue graphicsQueue;
+    vk::Queue transferQueue;
+    util::SwapchainSupportDetails swapInfo;
+
+    Context()
+    {
+      glfwInit();
+      glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+      glfwWindowHint(GLFW_RESIZABLE, kResizable);
+      window = glfwCreateWindow(kWidth,
+                     kHeight,
+                     "ngfx",
+                     nullptr,
+                     nullptr);
+      glfwSetWindowUserPointer(window, this); 
+     
+      util::createInstance("test", "ngfx", VK_API_VERSION_1_1, &instance);
+      util::createDebugMessenger((VkInstance *) &instance,
+                                 (VkDebugUtilsMessengerEXT *) &debugMessenger);
+      
+      glfwCreateWindowSurface(instance,
+                              window,
+                              nullptr,
+                              (VkSurfaceKHR *) &surface);
+
+      physicalDevice = util::pickPhysicalDevice(&instance, &surface); 
+      util::findQueueFamilies(&physicalDevice, &surface, &qFamilies);
+      util::createLogicalDevice(&physicalDevice, &qFamilies, &device);
+      graphicsQueue = device.getQueue(qFamilies.graphicsFamily.value(), 0);
+      presentQueue = device.getQueue(qFamilies.presentFamily.value(), 0);
+      transferQueue = device.getQueue(qFamilies.transferFamily.value(), 0);
+      util::querySwapchainSupport(&physicalDevice, &surface, &swapInfo);
+    };
+  };
+  
+  // TODO: Maybe try to find a way to avoid vector use here
+  // Could possibly do something like fixed array with max images supported
+  struct SwapData {
+    vk::SwapchainKHR swapchain;
+    std::vector<vk::Image> images;
+    std::vector<vk::ImageView> views;
+    std::vector<vk::Fence> fences;
+    vk::RenderPass renderPass;
+    std::vector<vk::Framebuffer> framebuffers;
+    vk::Format format;
+    vk::Extent2D extent;
+    uint32_t padding;
+    
+    SwapData(Context *c)
+    {
+      // Swapchain & Format
+      
+      vk::SurfaceFormatKHR surfaceForm =
+          util::chooseSwapSurfaceFormat(c->swapInfo.formats);
+      vk::PresentModeKHR presentMode =
+          util::chooseSwapPresentMode(c->swapInfo.presentModes);
+
+      vk::Extent2D swapExtent(c->kWidth, c->kHeight);
+
+      format = surfaceForm.format;
+      extent = swapExtent;
+
+      uint32_t imageCount = c->swapInfo.capabilites.minImageCount + 1;
+      if (c->swapInfo.capabilites.maxImageCount > 0 &&
+          imageCount > c->swapInfo.capabilites.maxImageCount) {
+        imageCount = c->swapInfo.capabilites.maxImageCount;
+      }
+
+      uint32_t indices[] = {
+        c->qFamilies.graphicsFamily.value(),
+        c->qFamilies.presentFamily.value()
+      };
+      bool unifiedQ = (c->qFamilies.graphicsFamily.value()
+                           == c->qFamilies.presentFamily.value());
+
+      vk::SwapchainCreateInfoKHR
+        swapchainCI(vk::SwapchainCreateFlagsKHR(),
+                    c->surface,
+                    imageCount,
+                    format,
+                    surfaceForm.colorSpace,
+                    extent,
+                    1,
+                    vk::ImageUsageFlagBits::eColorAttachment,
+                    (unifiedQ) ? vk::SharingMode::eExclusive
+                               : vk::SharingMode::eConcurrent,
+                    (unifiedQ) ? 0
+                               : 2,
+                    (unifiedQ) ? nullptr
+                               : indices,
+                    c->swapInfo.capabilites.currentTransform,
+                    vk::CompositeAlphaFlagBitsKHR::eOpaque, presentMode,
+                    VK_TRUE,             // clipped
+                    vk::SwapchainKHR()); // old swapchain 
+      c->device.createSwapchainKHR(&swapchainCI, nullptr, &swapchain);
+
+      // Images & Views
+      
+      uint32_t swapchainImageCount = 0;
+      c->device.getSwapchainImagesKHR(swapchain,
+                                   &swapchainImageCount,
+                                   (vk::Image *) nullptr);
+      images.resize(swapchainImageCount);
+
+      c->device.getSwapchainImagesKHR(swapchain,
+                                   &swapchainImageCount,
+                                   images.data());
+      views.resize(swapchainImageCount);
+      for (size_t i = 0; i < swapchainImageCount; i++)
+      {
+        vk::ImageViewCreateInfo
+          viewCI(vk::ImageViewCreateFlags(),
+                 images[i],
+                 vk::ImageViewType::e2D,
+                 format,
+                 vk::ComponentMapping(),
+                 vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor,
+                                           0, // baseMipLevel
+                                           1, // levelCount
+                                           0, // baseArrayLayer
+                                           1) // layerCount
+        );
+        c->device.createImageView(&viewCI, nullptr, &views[i]);
+      }
+
+      // RenderPass
+
+      vk::AttachmentDescription
+        colorAttachment(vk::AttachmentDescriptionFlags(),
+                        surfaceForm.format, 
+                        vk::SampleCountFlagBits::e1,
+                        vk::AttachmentLoadOp::eClear,
+                        vk::AttachmentStoreOp::eStore,
+                        vk::AttachmentLoadOp::eDontCare,
+                        vk::AttachmentStoreOp::eDontCare,
+                        vk::ImageLayout::eUndefined,
+                        vk::ImageLayout::ePresentSrcKHR);
+      vk::AttachmentReference
+              colorAttachmentRef(0,
+                                 vk::ImageLayout::eColorAttachmentOptimal);
+      vk::SubpassDescription subpass(vk::SubpassDescriptionFlags(),
+                                     vk::PipelineBindPoint::eGraphics,
+                                     0,
+                                     nullptr,
+                                     1,
+                                     &colorAttachmentRef,
+                                     nullptr,
+                                     nullptr,
+                                     0,
+                                     nullptr);
+      vk::SubpassDependency
+          subpassDependency(0,
+                            VK_SUBPASS_EXTERNAL,
+                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                            vk::AccessFlags(),
+                            vk::AccessFlagBits::eColorAttachmentWrite,
+                            vk::DependencyFlags()
+                            );
+      
+      vk::RenderPassCreateInfo renderPassCI(vk::RenderPassCreateFlags(),
+                                            1,
+                                            &colorAttachment,
+                                            1,
+                                            &subpass,
+                                            1,
+                                            &subpassDependency);
+      c->device.createRenderPass(&renderPassCI, nullptr, &renderPass);
+      
+      // Framebuffers
+      framebuffers.resize(views.size());
+      for(size_t i = 0; i < views.size(); i++)
+      {
+        vk::ImageView attachments[] =
+        {
+          views[i]
+        };
+        vk::FramebufferCreateInfo framebufferCI(vk::FramebufferCreateFlags(),
+                                                renderPass,
+                                                1,
+                                                attachments,
+                                                extent.width,
+                                                extent.height,
+                                                1);
+        c->device.createFramebuffer(&framebufferCI, nullptr, &framebuffers[i]);
+      }  
+    }
+  };
+
+  
+
+  class TestRenderer {
+  public:
+    Context c;
+    SwapData swapData;
+
+    TestRenderer() : c(), swapData(&c), _currentFrame(0) {}
 
     void init(void)
     {
-      initWindow(kWidth, kHeight);
       initVulkan();
     }
     void renderTest()
     {
-
       testLoop();
     }
-    ~Context(void)
-    {
-      cleanup();
-    }
+    ~TestRenderer(void) { cleanup(); }
 
   private:
-    GLFWwindow* _window;
-    vk::Instance _instance;
-    VkDebugUtilsMessengerEXT _primativeDebugMessenger;
-    vk::DebugUtilsMessengerEXT _debugMessenger;
-    vk::SurfaceKHR _surface;
-    VkSurfaceKHR _primativeSurface;
-
-    vk::PhysicalDevice _physicalDevice;
-    vk::Device _device;
-    util::QueueFamilyIndices _qFamilies;
-    vk::Queue _presentQueue;
-    vk::Queue _graphicsQueue;
-    util::SwapchainSupportDetails _swapchainInfo;
-    util::SwapchainData _swapData;
-
     vk::PipelineLayout _pipelineLayout;
-    vk::RenderPass _renderPass;
     vk::Pipeline _graphicsPipeline;
 
     vk::CommandPool _commandPool;
     std::vector<vk::CommandBuffer> _commandBuffers;
-
+    
     vk::DescriptorPool _descriptorPool;
     vk::DescriptorSet _descriptorSet;
-    std::array<vk::DescriptorSetLayout, 2> _descLayouts;
+    vk::DescriptorSetLayout _descLayouts;
 
     util::FastBuffer _vertexBuffer;
     util::FastBuffer _indexBuffer;
@@ -74,57 +258,19 @@ namespace ngfx
 
     util::SemaphoreSet _semaphores[ngfx::kMaxFramesInFlight];
     vk::Fence _inFlightFences[ngfx::kMaxFramesInFlight];
-    uint32_t _currentFrame;
+    uint32_t _currentFrame = 0;
 
     util::Fbo _offscreenFbo;
     vk::Sampler _sampler;
 
-    void initWindow(int width, int height)
-    {
-      glfwInit();
-      glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-      glfwWindowHint(GLFW_RESIZABLE, resizable);
-      _window = glfwCreateWindow(width,
-                     height,
-                     "ngfx",
-                     nullptr,
-                     nullptr);
-      glfwSetWindowUserPointer(_window, this);
-    }
 
-    // TODO: Evaluate alternative to copy constructors throughout
-    // Search "TODO: Fix Copy Constructor" for related code
     void initVulkan(void)
     {
-      _instance = util::createInstance("test", "ngfx", VK_API_VERSION_1_1);
-      util::createDebugMessenger(static_cast<VkInstance>(_instance),
-                                 &_primativeDebugMessenger);
-      // TODO: Fix need for primatives here & for surface
-      _debugMessenger = vk::DebugUtilsMessengerEXT(_primativeDebugMessenger);
-      glfwCreateWindowSurface(_instance, _window, nullptr, &_primativeSurface);
-      _surface = vk::SurfaceKHR(_primativeSurface);
-      _physicalDevice = util::pickPhysicalDevice(_instance, _surface);
-      _qFamilies = util::findQueueFamilies(_physicalDevice, _surface);
-      _device = util::createLogicalDevice(_physicalDevice, _qFamilies);
-      _graphicsQueue = _device.getQueue(_qFamilies.graphicsFamily.value(), 0);
-      _presentQueue = _device.getQueue(_qFamilies.presentFamily.value(), 0);
-      _swapchainInfo = util::querySwapchainSupport(_physicalDevice, _surface);
-      util::createSwapchain(&_swapData,
-                            _qFamilies,
-                            _device,
-                            _surface,
-                            _swapchainInfo,
-                            kWidth,
-                            kHeight);
-
-      createTestRenderPass();
       createTestDescriptorSetLayout();
       createTextureSampler();
       createTestOffscreenFbo();
       buildTestGraphicsPipeline();
-
-      util::createFramebuffers(&_swapData, _device, _renderPass);
-      _commandPool = util::createCommandPool(_device, _qFamilies);
+      _commandPool = util::createCommandPool(c.device, c.qFamilies);
       createTestBuffers();
       createDescriptorPool();
       createTestDescriptorSets();
@@ -133,16 +279,16 @@ namespace ngfx
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
         vk::SemaphoreCreateInfo semaphoreCI;
-        _device.createSemaphore(&semaphoreCI,
+        c.device.createSemaphore(&semaphoreCI,
                                 nullptr,
                                 &_semaphores[i].imageAvailable);
-        _device.createSemaphore(&semaphoreCI,
+        c.device.createSemaphore(&semaphoreCI,
                                 nullptr,
                                 &_semaphores[i].renderComplete);
         vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);
-        _device.createFence(&fenceCI, nullptr, &_inFlightFences[i]);
+        c.device.createFence(&fenceCI, nullptr, &_inFlightFences[i]);
       }
-      _swapData.fences.resize(_swapData.images.size(), vk::Fence(nullptr));
+      swapData.fences.resize(swapData.images.size(), vk::Fence(nullptr));
     }
 
     // TODO: pull loop out of Context class
@@ -150,8 +296,7 @@ namespace ngfx
     {
       double lastTime = glfwGetTime();
       int nbFrames = 0;
-      while (!glfwWindowShouldClose(_window))
-      {
+      while (!glfwWindowShouldClose(c.window)) {
 
         // Measure speed
         double currentTime = glfwGetTime();
@@ -164,7 +309,7 @@ namespace ngfx
         }
         drawFrame();
       }
-      _device.waitIdle();
+      c.device.waitIdle();
     }
 
     void cleanup(void)
@@ -175,26 +320,25 @@ namespace ngfx
       _mvpBuffer.~FastBuffer();
       _instanceBuffer.~FastBuffer();
 
-      _device.destroyDescriptorPool(_descriptorPool);
+      c.device.destroyDescriptorPool(_descriptorPool);
 
       cleanupSwapchain();
-      _device.destroyDescriptorSetLayout(_descLayouts[0]);
-      _device.destroyDescriptorSetLayout(_descLayouts[1]);
+      c.device.destroyDescriptorSetLayout(_descLayouts);
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
-        _device.destroySemaphore(_semaphores[i].imageAvailable);
-        _device.destroySemaphore(_semaphores[i].renderComplete);
-        _device.destroyFence(_inFlightFences[i]);
+        c.device.destroySemaphore(_semaphores[i].imageAvailable);
+        c.device.destroySemaphore(_semaphores[i].renderComplete);
+        c.device.destroyFence(_inFlightFences[i]);
       }
 
-      _device.destroyCommandPool(_commandPool);
-      _device.destroy();
-      util::DestroyDebugUtilsMessengerEXT(_instance, _debugMessenger);
-      vkDestroySurfaceKHR(_instance, _surface, nullptr);
-      _instance.destroy();
+      c.device.destroyCommandPool(_commandPool);
+      c.device.destroy();
+      util::DestroyDebugUtilsMessengerEXT(c.instance, c.debugMessenger);
+      vkDestroySurfaceKHR(c.instance, c.surface, nullptr);
+      c.instance.destroy();
 
-      glfwDestroyWindow(_window);
+      glfwDestroyWindow(c.window);
 
       glfwTerminate();
     }
@@ -203,21 +347,20 @@ namespace ngfx
     {
       //validateSwapchain();
       updateTestMvp(_semaphores[_currentFrame].renderComplete);
-      _device.waitForFences(1, &_inFlightFences[_currentFrame], true, UINT64_MAX);
+      c.device.waitForFences(1, &_inFlightFences[_currentFrame], true, UINT64_MAX);
       
       uint32_t imageIndex;
-      _device.acquireNextImageKHR(_swapData.swapchain,
-                                  UINT64_MAX,
-                                  _semaphores[_currentFrame].imageAvailable,
-                                  vk::Fence(nullptr),
-                                  &imageIndex);
+      c.device.acquireNextImageKHR(swapData.swapchain, UINT64_MAX,
+                                   _semaphores[_currentFrame].imageAvailable,
+                                   vk::Fence(nullptr), &imageIndex);
 
-      if (_swapData.fences[imageIndex] != vk::Fence(nullptr)) {
-          _device.waitForFences(1, &_swapData.fences[imageIndex], true, UINT64_MAX);
+      if (swapData.fences[imageIndex] != vk::Fence(nullptr)) {
+        c.device.waitForFences(1, &swapData.fences[imageIndex], true,
+                               UINT64_MAX);
       }
-      _swapData.fences[imageIndex] = _inFlightFences[_currentFrame];
+      swapData.fences[imageIndex] = _inFlightFences[_currentFrame];
 
-      _device.resetFences(1, (const vk::Fence *)&_inFlightFences[_currentFrame]);
+      c.device.resetFences(1, (const vk::Fence *)&_inFlightFences[_currentFrame]);
 
       vk::PipelineStageFlags waitStages(vk::PipelineStageFlagBits::eColorAttachmentOutput);
       vk::SubmitInfo submitInfo(1,
@@ -227,64 +370,53 @@ namespace ngfx
                                 &_commandBuffers[imageIndex],
                                 1,
                                 &_semaphores[_currentFrame].renderComplete);
-      _graphicsQueue.submit(1, &submitInfo, _inFlightFences[_currentFrame]);
+      c.graphicsQueue.submit(1, &submitInfo, _inFlightFences[_currentFrame]);
 
-      vk::PresentInfoKHR presentInfo(1,
-                                     &_semaphores[_currentFrame].renderComplete,
-                                     1,
-                                     &_swapData.swapchain,
-                                     &imageIndex,
-                                     nullptr);
+      vk::PresentInfoKHR presentInfo(
+          1, &_semaphores[_currentFrame].renderComplete, 1, &swapData.swapchain,
+          &imageIndex, nullptr);
 
-      _presentQueue.presentKHR(&presentInfo);
+      c.presentQueue.presentKHR(&presentInfo);
       _currentFrame = (_currentFrame + 1) % kMaxFramesInFlight;
     }
 
     void cleanupSwapchain(void)
     {
-      for (auto fb : _swapData.framebuffers)
-      {
-        _device.destroyFramebuffer(fb);
+      for (auto fb : swapData.framebuffers) {
+        c.device.destroyFramebuffer(fb);
       }
-      _device.freeCommandBuffers(_commandPool,
+      c.device.freeCommandBuffers(_commandPool,
                                  (uint) _commandBuffers.size(),
                                  (const vk::CommandBuffer *)_commandBuffers.data());
-      _device.destroyPipeline(_graphicsPipeline);
-      _device.destroyRenderPass(_renderPass);
-      _device.destroyPipelineLayout(_pipelineLayout);
-      for (auto view : _swapData.views) _device.destroyImageView(view);
-      _device.destroySwapchainKHR(_swapData.swapchain);
+      c.device.destroyPipeline(_graphicsPipeline);
+      c.device.destroyRenderPass(swapData.renderPass);
+      c.device.destroyPipelineLayout(_pipelineLayout);
+      for (auto view : swapData.views)
+        c.device.destroyImageView(view);
+      c.device.destroySwapchainKHR(swapData.swapchain);
     }
 
     void validateSwapchain(void)
     {
       int width, height;
-      glfwGetWindowSize(_window, &width, &height);
+      glfwGetWindowSize(c.window, &width, &height);
 
-      if (width == (int) _swapchainInfo.capabilites.currentExtent.width
-          && height == (int) _swapchainInfo.capabilites.currentExtent.height)
-      {
+      if (width == (int)c.swapInfo.capabilites.currentExtent.width &&
+          height == (int)c.swapInfo.capabilites.currentExtent.height) {
         return;
       }
 
-      _device.waitIdle();
+      c.device.waitIdle();
 
       cleanupSwapchain();
-      _swapchainInfo = util::querySwapchainSupport(_physicalDevice, _surface);
+      util::querySwapchainSupport(&c.physicalDevice, &c.surface, &c.swapInfo);
 
-      util::createSwapchain(&_swapData,
-                            _qFamilies,
-                            _device,
-                            _surface,
-                            _swapchainInfo,
-                            (uint) width,
-                            (uint) height);
+      // TODO:: improve rebuilding swapchain to avoid copy constructor
+      swapData = SwapData(&c);
 
-      createTestRenderPass();
       buildTestGraphicsPipeline();
 
-      util::createFramebuffers(&_swapData, _device, _renderPass);
-      _commandPool = util::createCommandPool(_device, _qFamilies);
+      _commandPool = util::createCommandPool(c.device, c.qFamilies);
 
       buildCommandBuffers();
     }
@@ -295,8 +427,8 @@ namespace ngfx
       auto vertShaderCode = util::readFile("shaders/vert.spv");
       auto fragShaderCode = util::readFile("shaders/frag.spv");
 
-      vk::ShaderModule vertModule = util::createShaderModule(_device, vertShaderCode);
-      vk::ShaderModule fragModule = util::createShaderModule(_device, fragShaderCode);
+      vk::ShaderModule vertModule = util::createShaderModule(c.device, vertShaderCode);
+      vk::ShaderModule fragModule = util::createShaderModule(c.device, fragShaderCode);
 
       vk::PipelineShaderStageCreateInfo vertStageCI(vk::PipelineShaderStageCreateFlags(),
                                                     vk::ShaderStageFlagBits::eVertex,
@@ -352,14 +484,10 @@ namespace ngfx
                         vk::PrimitiveTopology::eLineStrip,
                         false);
 
-      vk::Viewport viewport(0.0f,
-                            0.0f,
-                            _swapData.extent.width,
-                            _swapData.extent.height,
-                            0.0,
-                            1.0);
+      vk::Viewport viewport(0.0f, 0.0f, swapData.extent.width,
+                            swapData.extent.height, 0.0, 1.0);
 
-      vk::Rect2D scissor(vk::Offset2D(0, 0), _swapData.extent);
+      vk::Rect2D scissor(vk::Offset2D(0, 0), swapData.extent);
 
       vk::PipelineViewportStateCreateInfo
           viewportCI(vk::PipelineViewportStateCreateFlags(),
@@ -423,12 +551,12 @@ namespace ngfx
 
       vk::PipelineLayoutCreateInfo 
         pipelineLayoutCI(vk::PipelineLayoutCreateFlags(),
-                         _descLayouts.size(),
-                         _descLayouts.data(),
+                         1,
+                         &_descLayouts,
                          0,
                          nullptr);
 
-      _device.createPipelineLayout(&pipelineLayoutCI, nullptr, &_pipelineLayout);
+      c.device.createPipelineLayout(&pipelineLayoutCI, nullptr, &_pipelineLayout);
 
       vk::GraphicsPipelineCreateInfo pipelineCI(vk::PipelineCreateFlags(),
                                                 2,
@@ -443,72 +571,28 @@ namespace ngfx
                                                 &colorBlendingCI,
                                                 nullptr,
                                                 _pipelineLayout,
-                                                _renderPass,
+                                                swapData.renderPass,
                                                 0,
                                                 nullptr,
                                                 -1);
+      // TODO: add pipeline cache
+      c.device.createGraphicsPipelines(nullptr,
+                                       1,
+                                       &pipelineCI,
+                                       nullptr,
+                                       &_graphicsPipeline);
 
-      _graphicsPipeline = _device.createGraphicsPipeline(nullptr, pipelineCI).value;
-
-      _device.destroyShaderModule(vertModule);
-      _device.destroyShaderModule(fragModule);
-    }
-
-    void createTestRenderPass(void)
-    {
-      vk::AttachmentDescription colorAttachment(vk::AttachmentDescriptionFlags(),
-                                                _swapData.format,
-                                                vk::SampleCountFlagBits::e1,
-                                                vk::AttachmentLoadOp::eClear,
-                                                vk::AttachmentStoreOp::eStore,
-                                                vk::AttachmentLoadOp::eDontCare,
-                                                vk::AttachmentStoreOp::eDontCare,
-                                                vk::ImageLayout::eUndefined,
-                                                vk::ImageLayout::ePresentSrcKHR);
-
-      vk::AttachmentReference
-              colorAttachmentRef(0,
-                                 vk::ImageLayout::eColorAttachmentOptimal);
-
-      vk::SubpassDescription subpass(vk::SubpassDescriptionFlags(),
-                                     vk::PipelineBindPoint::eGraphics,
-                                     0,
-                                     nullptr,
-                                     1,
-                                     &colorAttachmentRef,
-                                     nullptr,
-                                     nullptr,
-                                     0,
-                                     nullptr);
-
-      vk::SubpassDependency
-          subpassDependency(0,
-                            VK_SUBPASS_EXTERNAL,
-                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                            vk::AccessFlags(),
-                            vk::AccessFlagBits::eColorAttachmentWrite,
-                            vk::DependencyFlags()
-                            );
-
-
-      vk::RenderPassCreateInfo renderPassCI(vk::RenderPassCreateFlags(),
-                                            1,
-                                            &colorAttachment,
-                                            1,
-                                            &subpass,
-                                            1,
-                                            &subpassDependency);
-
-      _device.createRenderPass(&renderPassCI, nullptr, &_renderPass);
+      c.device.destroyShaderModule(vertModule);
+      c.device.destroyShaderModule(fragModule);
     }
 
     void buildCommandBuffers(void)
     {
+      _commandBuffers.resize(swapData.framebuffers.size());
       vk::CommandBufferAllocateInfo allocInfo(_commandPool,
                                               vk::CommandBufferLevel::ePrimary,
-                                              (uint) _swapData.framebuffers.size());
-      _device.allocateCommandBuffers(&allocInfo, _commandBuffers.data());
+                                              (uint) _commandBuffers.size());
+      c.device.allocateCommandBuffers(&allocInfo, _commandBuffers.data());
 
       for (size_t i = 0; i < _commandBuffers.size(); i++)
       {
@@ -526,13 +610,9 @@ namespace ngfx
         };
         vk::ClearColorValue clearColor(clearColorPrimative);
         const vk::ClearValue clearValue(clearColor);
-        vk::RenderPassBeginInfo renderPassInfo(_renderPass,
-                                _swapData.framebuffers[i],
-                                vk::Rect2D(vk::Offset2D(0, 0),
-                                _swapData.extent),
-                                1,
-                                &clearValue
-                                );
+        vk::RenderPassBeginInfo renderPassInfo(
+            swapData.renderPass, swapData.framebuffers[i],
+            vk::Rect2D(vk::Offset2D(0, 0), swapData.extent), 1, &clearValue);
         _commandBuffers[i].beginRenderPass(renderPassInfo,
                                            vk::SubpassContents::eInline);
         _commandBuffers[i].bindPipeline(vk::PipelineBindPoint::eGraphics,
@@ -572,40 +652,32 @@ namespace ngfx
       vk::DeviceSize mvpSize = sizeof(util::Mvp);
       vk::DeviceSize instanceSize = sizeof(util::testInstances);
 
-      _vertexBuffer = util::FastBuffer(_device,
-                                       _physicalDevice,
-                                       _commandPool,
-                                       vertexSize,
-                                       vk::BufferUsageFlagBits::eVertexBuffer);
+      _vertexBuffer =
+          util::FastBuffer(c.device, c.physicalDevice, _commandPool, vertexSize,
+                           vk::BufferUsageFlagBits::eVertexBuffer);
       _vertexBuffer.init();
       _vertexBuffer.stage((void *)util::testVertices);
-      _vertexBuffer.copy(_graphicsQueue);
+      _vertexBuffer.copy(c.graphicsQueue);
 
-      _indexBuffer = util::FastBuffer(_device,
-                                      _physicalDevice,
-                                      _commandPool,
-                                      indexSize,
-                                      vk::BufferUsageFlagBits::eIndexBuffer);
+      _indexBuffer =
+          util::FastBuffer(c.device, c.physicalDevice, _commandPool, indexSize,
+                           vk::BufferUsageFlagBits::eIndexBuffer);
       _indexBuffer.init();
       _indexBuffer.stage((void *)util::testIndices);
-      _indexBuffer.copy(_graphicsQueue);
+      _indexBuffer.copy(c.graphicsQueue);
 
-      _mvpBuffer = util::FastBuffer(_device,
-                                    _physicalDevice,
-                                    _commandPool,
-                                    mvpSize,
-                                    vk::BufferUsageFlagBits::eUniformBuffer);
+      _mvpBuffer =
+          util::FastBuffer(c.device, c.physicalDevice, _commandPool, mvpSize,
+                           vk::BufferUsageFlagBits::eUniformBuffer);
       _mvpBuffer.init();
 
-      _instanceBuffer = util::FastBuffer(_device,
-                                         _physicalDevice,
-                                         _commandPool,
-                                         instanceSize,
-                                         vk::BufferUsageFlagBits::eVertexBuffer);
+      _instanceBuffer = util::FastBuffer(
+          c.device, c.physicalDevice, _commandPool, instanceSize,
+          vk::BufferUsageFlagBits::eVertexBuffer);
       _instanceBuffer.init();
       _instanceBuffer.stage((void *)util::testInstances);
       // Last copy is blocking
-      _instanceBuffer.blockingCopy(_graphicsQueue);
+      _instanceBuffer.blockingCopy(c.graphicsQueue);
     }
     
     // TODO: Use waitSemaphore
@@ -622,15 +694,13 @@ namespace ngfx
       mvp.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 10.0f),
                              glm::vec3(0.0f, 0.0f, 0.0f),
                              glm::vec3(0.0f, 0.0f, 1.0f));
-      mvp.proj = glm::perspective(glm::radians(90.0f),
-                                  _swapData.extent.width
-                                  / (float) _swapData.extent.height,
-                                  0.1f,
-                                  100.0f);
+      mvp.proj = glm::perspective(
+          glm::radians(90.0f),
+          swapData.extent.width / (float)swapData.extent.height, 0.1f, 100.0f);
       mvp.proj[1][1] *= -1;
       
       _mvpBuffer.stage(&mvp);
-      _mvpBuffer.blockingCopy(_graphicsQueue);
+      _mvpBuffer.blockingCopy(c.graphicsQueue);
     }
 
     // TODO: support variable number of descriptor sets
@@ -645,44 +715,39 @@ namespace ngfx
                                             2, // TODO: Learn what maxSets is used for
                                             2,
                                             poolSize);
-      _device.createDescriptorPool(&poolInfo, nullptr, &_descriptorPool);
+      c.device.createDescriptorPool(&poolInfo, nullptr, &_descriptorPool);
     }
 
     void createTestDescriptorSetLayout(void)
     {
-      vk::DescriptorSetLayoutBinding
-        uboLayoutBinding(0,
-                         vk::DescriptorType::eUniformBuffer,
-                         1,
-                         vk::ShaderStageFlagBits::eVertex,
-                         nullptr);
-      vk::DescriptorSetLayoutBinding 
-        samplerLayoutBinding(1,
-                             vk::DescriptorType::eCombinedImageSampler,
-                             1,
-                             vk::ShaderStageFlagBits::eFragment, 
-                             nullptr);
-      
+      vk::DescriptorSetLayoutBinding bindings[] = {
+        vk::DescriptorSetLayoutBinding
+                           (0,
+                           vk::DescriptorType::eUniformBuffer,
+                           1,
+                           vk::ShaderStageFlagBits::eVertex,
+                           nullptr),
+        vk::DescriptorSetLayoutBinding 
+                               (1,
+                               vk::DescriptorType::eCombinedImageSampler,
+                               1,
+                               vk::ShaderStageFlagBits::eFragment, 
+                               nullptr)
+      };
       vk::DescriptorSetLayoutCreateInfo
-        uboLayoutCI(vk::DescriptorSetLayoutCreateFlags(),
-                 1,
-                 &uboLayoutBinding); 
-      vk::DescriptorSetLayoutCreateInfo
-        samplerLayoutCI(vk::DescriptorSetLayoutCreateFlags(),
-                 1,
-                 &samplerLayoutBinding);
-      _device.createDescriptorSetLayout(&uboLayoutCI, nullptr, &_descLayouts[0]);
-      _device.createDescriptorSetLayout(&samplerLayoutCI, nullptr, &_descLayouts[1]);
- 
+        layoutCI(vk::DescriptorSetLayoutCreateFlags(),
+                 2,
+                 bindings); 
+      c.device.createDescriptorSetLayout(&layoutCI, nullptr, &_descLayouts);
     }
 
     void createTestDescriptorSets(void)
     {
       vk::DescriptorSetAllocateInfo allocInfo(_descriptorPool,
-                                              _descLayouts.size(),
-                                              _descLayouts.data());
+                                              1,
+                                              &_descLayouts);
 
-      _device.allocateDescriptorSets(&allocInfo, &_descriptorSet);
+      c.device.allocateDescriptorSets(&allocInfo, &_descriptorSet);
 
       vk::DescriptorBufferInfo bufferInfo(_mvpBuffer.localBuffer,
                                0,
@@ -710,7 +775,7 @@ namespace ngfx
                                nullptr)
       };
 
-      _device.updateDescriptorSets(2, descWrite, 0, nullptr);
+      c.device.updateDescriptorSets(util::array_size(descWrite), descWrite, 0, nullptr);
     }
 
     void createTestOffscreenFbo(void)
@@ -733,16 +798,16 @@ namespace ngfx
                                   | vk::ImageUsageFlagBits::eSampled
                                   | vk::ImageUsageFlagBits::eTransferSrc,
                                   vk::SharingMode::eExclusive);
-      _device.createImage(&imageCI, nullptr, i);
+      c.device.createImage(&imageCI, nullptr, i);
 
       vk::MemoryRequirements memReqs;
-      _device.getImageMemoryRequirements(*i, &memReqs);
-      auto memType = util::findMemoryType(_physicalDevice,
-                           memReqs.memoryTypeBits,
-                           vk::MemoryPropertyFlagBits::eDeviceLocal);
+      c.device.getImageMemoryRequirements(*i, &memReqs);
+      auto memType =
+          util::findMemoryType(c.physicalDevice, memReqs.memoryTypeBits,
+                               vk::MemoryPropertyFlagBits::eDeviceLocal);
       vk::MemoryAllocateInfo allocInfo(memReqs.size, memType);
-      _device.allocateMemory(&allocInfo, nullptr, m);
-      _device.bindImageMemory(*i, *m, 0);
+      c.device.allocateMemory(&allocInfo, nullptr, m);
+      c.device.bindImageMemory(*i, *m, 0);
 
       vk::ImageViewCreateInfo viewCI(vk::ImageViewCreateFlags(),
                                      *i,
@@ -756,7 +821,7 @@ namespace ngfx
                                      0, //baseArrayLayer
                                      1) //layerCount
                                      );
-      _device.createImageView(&viewCI, nullptr, v);
+      c.device.createImageView(&viewCI, nullptr, v);
     }
 
     void createTextureSampler()
@@ -777,7 +842,7 @@ namespace ngfx
                                       0.0f,
                                       vk::BorderColor::eIntOpaqueWhite,
                                       false);
-      _device.createSampler(&samplerCI, nullptr, &_sampler);
+      c.device.createSampler(&samplerCI, nullptr, &_sampler);
     }
   };
 }

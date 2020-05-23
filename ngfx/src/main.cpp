@@ -15,7 +15,7 @@
 #include "util.hpp"
 
 int main() {
-  ngfx::Context app;
+  ngfx::TestRenderer app;
 
   try {
     app.init();

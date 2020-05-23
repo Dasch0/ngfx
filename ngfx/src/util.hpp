@@ -3,11 +3,16 @@
 
 #include "ngfx.hpp"
 #include "config.hpp"
+#include <vulkan/vulkan_core.h>
 
 namespace ngfx
 {
   namespace util
   {
+    template <typename T, size_t N>
+      constexpr size_t array_size(T (&)[N]) {
+            return N;
+      }
 
     uint32_t findMemoryType(vk::PhysicalDevice &phys,
                             uint32_t typeFilter,
@@ -17,9 +22,12 @@ namespace ngfx
     {
       std::optional<uint32_t> graphicsFamily;
       std::optional<uint32_t> presentFamily;
+      std::optional<uint32_t> transferFamily;
 
       bool isValid() {
-          return graphicsFamily.has_value() && presentFamily.has_value();
+          return graphicsFamily.has_value() 
+            && presentFamily.has_value()
+            && transferFamily.has_value();
       }
     };
 
@@ -27,17 +35,6 @@ namespace ngfx
       std::vector<vk::SurfaceFormatKHR> formats;
       std::vector<vk::PresentModeKHR> presentModes;
       vk::SurfaceCapabilitiesKHR capabilites;
-      uint32_t padding;
-    };
-
-    struct SwapchainData {
-      vk::SwapchainKHR swapchain;
-      std::vector<vk::Image> images;
-      std::vector<vk::ImageView> views;
-      std::vector<vk::Framebuffer> framebuffers;
-      std::vector<vk::Fence> fences;
-      vk::Format format;
-      vk::Extent2D extent;
       uint32_t padding;
     };
 
@@ -309,48 +306,64 @@ namespace ngfx
       (void) messageType;
       (void) pUserData;
 
-      std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-
+      if (messageSeverity
+          & (VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+             | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT))
+      {
+        std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+      }
       return VK_FALSE;
     }
 
-    static QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice phys,
-                                                vk::SurfaceKHR surface)
+    // TODO: maybe move this into QueueFamilyIndices?
+    void findQueueFamilies(vk::PhysicalDevice *phys,
+                      vk::SurfaceKHR *surface,
+                      QueueFamilyIndices *qFamilies)
     {
-      QueueFamilyIndices indices;
       uint32_t count = 0;
 
-      phys.getQueueFamilyProperties(&count, (vk::QueueFamilyProperties *) nullptr);
+      phys->getQueueFamilyProperties(&count,
+                                    (vk::QueueFamilyProperties *) nullptr);
       std::vector<vk::QueueFamilyProperties> families(count);
-      phys.getQueueFamilyProperties(&count, families.data());
+      phys->getQueueFamilyProperties(&count, families.data());
 
       uint i = 0;
       for (const vk::QueueFamilyProperties &family : families)
       {
         vk::Bool32 presentSupport = false;
-        phys.getSurfaceSupportKHR(i, surface, &presentSupport);
+        phys->getSurfaceSupportKHR(i, *surface, &presentSupport);
         if (presentSupport)
         {
-          indices.presentFamily = i;
+          qFamilies->presentFamily = i;
         }
         if(family.queueFlags & vk::QueueFlagBits::eGraphics)
         {
-          indices.graphicsFamily = i;
+          qFamilies->graphicsFamily = i;
         }
-        if (indices.isValid()) break;
+        if((family.queueFlags & vk::QueueFlagBits::eTransfer)
+           && !(family.queueFlags & vk::QueueFlagBits::eGraphics))
+        {
+          qFamilies->transferFamily = i;
+        }
+        if (qFamilies->isValid()) break;
         i++;
       }
-      return indices;
+
+      // If a dedicated transfer queue is not found, use graphics
+      if( !qFamilies->transferFamily.has_value())
+      {
+        qFamilies->transferFamily = qFamilies->graphicsFamily;
+      }
     }
 
-    bool checkDeviceExtensionSupport(vk::PhysicalDevice phys)
+    bool checkDeviceExtensionSupport(vk::PhysicalDevice *phys)
     {
       uint32_t count = 0;
-      phys.enumerateDeviceExtensionProperties(nullptr,
+      phys->enumerateDeviceExtensionProperties(nullptr,
                                                 &count,
                                                 (vk::ExtensionProperties *) nullptr);
       std::vector<vk::ExtensionProperties> extensions(count);
-      phys.enumerateDeviceExtensionProperties(nullptr,
+      phys->enumerateDeviceExtensionProperties(nullptr,
                                                 &count,
                                                 extensions.data());
 
@@ -365,50 +378,52 @@ namespace ngfx
       return requiredExtensions.empty();
     }
 
-    SwapchainSupportDetails querySwapchainSupport(vk::PhysicalDevice phys,
-                                                         vk::SurfaceKHR surface)
+    // TODO: maybe move this into SwapchainSupportDetails
+    void querySwapchainSupport(vk::PhysicalDevice *phys,
+                               vk::SurfaceKHR *surface,
+                               SwapchainSupportDetails *details)
     {
-      SwapchainSupportDetails details;
+
       uint32_t formatCount, presentModeCount;
 
-      phys.getSurfaceCapabilitiesKHR(surface, &details.capabilites);
-      phys.getSurfaceFormatsKHR(surface,
-                                  &formatCount,
-                                  (vk::SurfaceFormatKHR *) nullptr);
-      phys.getSurfacePresentModesKHR(surface,
-                                       &presentModeCount,
-                                       (vk::PresentModeKHR *) nullptr);
+      phys->getSurfaceCapabilitiesKHR(*surface, &(details->capabilites));
+      phys->getSurfaceFormatsKHR(*surface,
+                                 &formatCount,
+                                 (vk::SurfaceFormatKHR *) nullptr);
+      phys->getSurfacePresentModesKHR(*surface,
+                                     &presentModeCount,
+                                     (vk::PresentModeKHR *) nullptr);
 
       if (formatCount != 0)
       {
-        details.formats.resize(formatCount);
-        phys.getSurfaceFormatsKHR(surface, &formatCount, details.formats.data());
+        details->formats.resize(formatCount);
+        phys->getSurfaceFormatsKHR(*surface, &formatCount, details->formats.data());
       }
 
       if (presentModeCount !=0)
       {
-        details.presentModes.resize(presentModeCount);
-        phys.getSurfacePresentModesKHR(surface,
-                                         &presentModeCount,
-                                         details.presentModes.data());
+        details->presentModes.resize(presentModeCount);
+        phys->getSurfacePresentModesKHR(*surface,
+                                        &presentModeCount,
+                                        details->presentModes.data());
       }
-      return details;
     }
 
-    static bool isDeviceSuitable(vk::PhysicalDevice phys, vk::SurfaceKHR surface)
+    static bool isDeviceSuitable(vk::PhysicalDevice *phys,
+                                 vk::SurfaceKHR *surface)
     {
-      QueueFamilyIndices indices = findQueueFamilies(phys, surface);
-
       bool extensionsSupported = checkDeviceExtensionSupport(phys);
 
       bool swapchainAdequate = false;
-      SwapchainSupportDetails swapchainSupport = querySwapchainSupport(phys,
-                                                                       surface);
-      swapchainAdequate = !swapchainSupport.formats.empty()
-          && !swapchainSupport.presentModes.empty();
+      
+      SwapchainSupportDetails details;
+      querySwapchainSupport(phys,
+                            surface,
+                            &details);
+      swapchainAdequate = !details.formats.empty()
+          && !details.presentModes.empty();
 
-      return (indices.isValid()
-              && extensionsSupported
+      return (extensionsSupported
               && swapchainAdequate)
           ? true : false;
     }
@@ -468,9 +483,10 @@ namespace ngfx
      * Public utility Functions
      */
 
-    vk::Instance createInstance(std::string const& appName,
+    void createInstance(std::string const& appName,
                                 std::string const& engineName,
-                                uint32_t apiVersion)
+                                uint32_t apiVersion,
+                                vk::Instance *instance)
     {
       vk::ApplicationInfo applicationInfo(appName.c_str(),
                                           1,
@@ -506,18 +522,16 @@ namespace ngfx
             &debugCallback,
             nullptr);
       instanceCI.setPNext((ngfx::kDebug) ? &debugCI : nullptr);
-      vk::Instance instance = vk::createInstance(instanceCI).value;
-
-      return instance;
+      
+      vk::createInstance(&instanceCI, nullptr, instance); 
     }
 
-    VkResult createDebugMessenger(VkInstance instance,
+    VkResult createDebugMessenger(VkInstance *instance,
                                   VkDebugUtilsMessengerEXT* debugMessenger)
     {
       vk::DebugUtilsMessengerCreateInfoEXT debugCI(
             vk::DebugUtilsMessengerCreateFlagsEXT(),
-            vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
-            | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
+            vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
             | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
             vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
             | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
@@ -525,10 +539,10 @@ namespace ngfx
             debugCallback,
             nullptr);
       auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-            instance,
+            *instance,
             "vkCreateDebugUtilsMessengerEXT");
 
-      return func(instance,
+      return func(*instance,
                   (VkDebugUtilsMessengerCreateInfoEXT *) &debugCI,
                   nullptr,
                   debugMessenger);
@@ -542,11 +556,11 @@ namespace ngfx
       return func(instance, debugMessenger, nullptr);
     }
 
-    vk::PhysicalDevice pickPhysicalDevice(vk::Instance instance,
-                                          vk::SurfaceKHR surface)
+    vk::PhysicalDevice pickPhysicalDevice(vk::Instance *instance,
+                                          vk::SurfaceKHR *surface)
     {
       uint32_t count = 0;
-      instance.enumeratePhysicalDevices(&count, (vk::PhysicalDevice *) nullptr);
+      instance->enumeratePhysicalDevices(&count, (vk::PhysicalDevice *) nullptr);
 
       if (count == 0)
       {
@@ -554,34 +568,37 @@ namespace ngfx
       }
 
       std::vector<vk::PhysicalDevice> devices(count);
-      instance.enumeratePhysicalDevices(&count, devices.data());
+      instance->enumeratePhysicalDevices(&count, devices.data());
 
       vk::PhysicalDevice selectedDevice;
-      for (const vk::PhysicalDevice &device : devices)
+      for (int i = 0; i < devices.size(); i++)
       {
-        if(isDeviceSuitable(device, surface))
+        if(isDeviceSuitable(&devices[i], surface))
         {
-          selectedDevice = device;
+          selectedDevice = devices[i];
         }
       }
 
       if (selectedDevice == vk::PhysicalDevice())
       {
         throw std::runtime_error("failed to find a suitable GPU");
-      } return selectedDevice;
+      }
+      return selectedDevice;
     }
 
-    vk::Device createLogicalDevice(vk::PhysicalDevice physicalDevice,
-                                   QueueFamilyIndices indices)
+    void createLogicalDevice(vk::PhysicalDevice *physicalDevice,
+                                   QueueFamilyIndices *indices,
+                                   vk::Device *device)
     {
       float priority = 1.0f;
       std::vector<vk::DeviceQueueCreateInfo> queuesCI;
-      // Note: set will only contain a single value if present=graphics queue
+      // Note: set will alias identical queueFamilies
+      // e.g if present=graphics family
       std::set<uint32_t> uniqueQueueFamilies = {
-        indices.graphicsFamily.value(),
-        indices.presentFamily.value()
+        indices->graphicsFamily.value(),
+        indices->presentFamily.value(),
+        indices->transferFamily.value()
       };
-
       for (uint32_t q : uniqueQueueFamilies)
       {
         vk::DeviceQueueCreateInfo qCI(vk::DeviceQueueCreateFlags(),
@@ -590,9 +607,7 @@ namespace ngfx
                                       &priority);
         queuesCI.push_back(qCI);
       }
-
       vk::PhysicalDeviceFeatures features;
-
       vk::DeviceCreateInfo deviceCI(vk::DeviceCreateFlags(),
                                     (uint) queuesCI.size(),
                                     queuesCI.data(),
@@ -602,92 +617,7 @@ namespace ngfx
                                     ngfx::kDeviceExtensions,
                                     &features
                                     );
-      return physicalDevice.createDevice(deviceCI).value;
-    }
-
-    // TODO: Fix messy swapdata initialization
-    void createSwapchain(SwapchainData *swapData,
-                         QueueFamilyIndices qFamilies,
-                         vk::Device device,
-                         vk::SurfaceKHR surface,
-                         SwapchainSupportDetails info,
-                         uint32_t width,
-                         uint32_t height)
-    {
-      vk::SurfaceFormatKHR format = chooseSwapSurfaceFormat(info.formats);
-      vk::PresentModeKHR presentMode = chooseSwapPresentMode(info.presentModes);
-
-      vk::Extent2D extent(width, height);
-
-      // Save swapchain data
-      swapData->format = format.format;
-      swapData->extent = extent;
-
-      uint32_t imageCount = info.capabilites.minImageCount + 1;
-      if (info.capabilites.maxImageCount > 0
-          && imageCount > info.capabilites.maxImageCount)
-      {
-        imageCount = info.capabilites.maxImageCount;
-      }
-
-      uint32_t indices[] = {
-        qFamilies.graphicsFamily.value(),
-        qFamilies.presentFamily.value()
-      };
-      bool unifiedQ = (qFamilies.graphicsFamily.value()
-                           == qFamilies.presentFamily.value());
-
-      vk::SwapchainCreateInfoKHR swapchainCI(vk::SwapchainCreateFlagsKHR(),
-                                             surface,
-                                             imageCount,
-                                             format.format,
-                                             format.colorSpace,
-                                             extent,
-                                             1,
-                                             vk::ImageUsageFlagBits::eColorAttachment,
-                                             (unifiedQ) ? vk::SharingMode::eExclusive
-                                                        : vk::SharingMode::eConcurrent,
-                                             (unifiedQ) ? 0
-                                                        : 2,
-                                             (unifiedQ) ? nullptr
-                                                        : indices,
-                                             info.capabilites.currentTransform,
-                                             vk::CompositeAlphaFlagBitsKHR::eOpaque,
-                                             presentMode,
-                                             VK_TRUE, // clipped
-                                             vk::SwapchainKHR()); // old swapchain
-      // Create swapchain
-      swapData->swapchain = device.createSwapchainKHR(swapchainCI).value;
-      uint32_t swapchainImageCount = 0;
-      device.getSwapchainImagesKHR(swapData->swapchain,
-                                   &swapchainImageCount,
-                                   (vk::Image *) nullptr);
-      swapData->images.resize(swapchainImageCount);
-
-      // Get images
-      device.getSwapchainImagesKHR(swapData->swapchain,
-                                   &swapchainImageCount,
-                                   swapData->images.data());
-
-      // Create imageviews
-      swapData->views.resize(swapchainImageCount);
-      for (size_t i = 0; i < swapchainImageCount; i++)
-      {
-        vk::ImageViewCreateInfo viewCI(vk::ImageViewCreateFlags(),
-                                       swapData->images[i],
-                                       vk::ImageViewType::e2D,
-                                       swapData->format,
-                                       vk::ComponentMapping(),
-                                       vk::ImageSubresourceRange(
-                                         vk::ImageAspectFlagBits::eColor,
-                                         0, //baseMipLevel
-                                         1, //levelCount
-                                         0, //baseArrayLayer
-                                         1) //layerCount
-                                       );
-
-        swapData->views[i] = device.createImageView(viewCI).value;
-      }
+      physicalDevice->createDevice(&deviceCI, nullptr, device);
     }
 
     static std::vector<char> readFile(const std::string& filename)
@@ -719,30 +649,6 @@ namespace ngfx
                                             code.data()));
 
       return device.createShaderModule(shaderCI).value;
-    }
-
-    void createFramebuffers(SwapchainData *swapData,
-                            vk::Device device,
-                            vk::RenderPass renderPass)
-    {
-      swapData->framebuffers.resize(swapData->views.size());
-      for(size_t i = 0; i < swapData->views.size(); i++)
-      {
-        vk::ImageView attachments[] =
-        {
-          swapData->views[i]
-        };
-
-        vk::FramebufferCreateInfo framebufferCI(vk::FramebufferCreateFlags(),
-                                                renderPass,
-                                                1,
-                                                attachments,
-                                                swapData->extent.width,
-                                                swapData->extent.height,
-                                                1);
-
-        swapData->framebuffers[i] = device.createFramebuffer(framebufferCI).value;
-      }
     }
 
     vk::CommandPool createCommandPool(vk::Device device,
