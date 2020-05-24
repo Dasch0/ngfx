@@ -1,5 +1,5 @@
-#ifndef CONTEXT_H
-#define CONTEXT_H
+#ifndef NGFX_TESTRENDERER_H
+#define NGFX_TESTRENDERER_H
 
 #include <chrono>
 #include <glm/glm.hpp>
@@ -9,220 +9,13 @@
 #include "ngfx.hpp"
 #include "config.hpp"
 #include "util.hpp"
+#include "context.hpp"
+#include "swap_data.hpp"
+
 
 // TODO: Docs
-
 namespace ngfx
 {
-  struct Context
-  {
-    // TODO: implement resizability & vsync
-    static const uint32_t kWidth = 800;
-    static const uint32_t kHeight = 600;
-    static const bool kResizable = false;
-    static const bool kVsync = false;
-
-    GLFWwindow *window;
-    vk::Instance instance;
-    vk::DebugUtilsMessengerEXT debugMessenger;
-    vk::SurfaceKHR surface;
-    VkSurfaceKHR primativeSurface;
-
-    vk::PhysicalDevice physicalDevice;
-    vk::Device device;
-    util::QueueFamilyIndices qFamilies;
-    vk::Queue presentQueue;
-    vk::Queue graphicsQueue;
-    vk::Queue transferQueue;
-    util::SwapchainSupportDetails swapInfo;
-
-    Context()
-    {
-      glfwInit();
-      glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-      glfwWindowHint(GLFW_RESIZABLE, kResizable);
-      window = glfwCreateWindow(kWidth,
-                     kHeight,
-                     "ngfx",
-                     nullptr,
-                     nullptr);
-      glfwSetWindowUserPointer(window, this); 
-     
-      util::createInstance("test", "ngfx", VK_API_VERSION_1_1, &instance);
-      util::createDebugMessenger((VkInstance *) &instance,
-                                 (VkDebugUtilsMessengerEXT *) &debugMessenger);
-      
-      glfwCreateWindowSurface(instance,
-                              window,
-                              nullptr,
-                              (VkSurfaceKHR *) &surface);
-
-      physicalDevice = util::pickPhysicalDevice(&instance, &surface); 
-      util::findQueueFamilies(&physicalDevice, &surface, &qFamilies);
-      util::createLogicalDevice(&physicalDevice, &qFamilies, &device);
-      graphicsQueue = device.getQueue(qFamilies.graphicsFamily.value(), 0);
-      presentQueue = device.getQueue(qFamilies.presentFamily.value(), 0);
-      transferQueue = device.getQueue(qFamilies.transferFamily.value(), 0);
-      util::querySwapchainSupport(&physicalDevice, &surface, &swapInfo);
-    };
-  };
-  
-  // TODO: Maybe try to find a way to avoid vector use here
-  // Could possibly do something like fixed array with max images supported
-  struct SwapData {
-    vk::SwapchainKHR swapchain;
-    std::vector<vk::Image> images;
-    std::vector<vk::ImageView> views;
-    std::vector<vk::Fence> fences;
-    vk::RenderPass renderPass;
-    std::vector<vk::Framebuffer> framebuffers;
-    vk::Format format;
-    vk::Extent2D extent;
-    uint32_t padding;
-    
-    SwapData(Context *c)
-    {
-      // Swapchain & Format
-      
-      vk::SurfaceFormatKHR surfaceForm =
-          util::chooseSwapSurfaceFormat(c->swapInfo.formats);
-      vk::PresentModeKHR presentMode =
-          util::chooseSwapPresentMode(c->swapInfo.presentModes);
-
-      vk::Extent2D swapExtent(c->kWidth, c->kHeight);
-
-      format = surfaceForm.format;
-      extent = swapExtent;
-
-      uint32_t imageCount = c->swapInfo.capabilites.minImageCount + 1;
-      if (c->swapInfo.capabilites.maxImageCount > 0 &&
-          imageCount > c->swapInfo.capabilites.maxImageCount) {
-        imageCount = c->swapInfo.capabilites.maxImageCount;
-      }
-
-      uint32_t indices[] = {
-        c->qFamilies.graphicsFamily.value(),
-        c->qFamilies.presentFamily.value()
-      };
-      bool unifiedQ = (c->qFamilies.graphicsFamily.value()
-                           == c->qFamilies.presentFamily.value());
-
-      vk::SwapchainCreateInfoKHR
-        swapchainCI(vk::SwapchainCreateFlagsKHR(),
-                    c->surface,
-                    imageCount,
-                    format,
-                    surfaceForm.colorSpace,
-                    extent,
-                    1,
-                    vk::ImageUsageFlagBits::eColorAttachment,
-                    (unifiedQ) ? vk::SharingMode::eExclusive
-                               : vk::SharingMode::eConcurrent,
-                    (unifiedQ) ? 0
-                               : 2,
-                    (unifiedQ) ? nullptr
-                               : indices,
-                    c->swapInfo.capabilites.currentTransform,
-                    vk::CompositeAlphaFlagBitsKHR::eOpaque, presentMode,
-                    VK_TRUE,             // clipped
-                    vk::SwapchainKHR()); // old swapchain 
-      c->device.createSwapchainKHR(&swapchainCI, nullptr, &swapchain);
-
-      // Images & Views
-      
-      uint32_t swapchainImageCount = 0;
-      c->device.getSwapchainImagesKHR(swapchain,
-                                   &swapchainImageCount,
-                                   (vk::Image *) nullptr);
-      images.resize(swapchainImageCount);
-
-      c->device.getSwapchainImagesKHR(swapchain,
-                                   &swapchainImageCount,
-                                   images.data());
-      views.resize(swapchainImageCount);
-      for (size_t i = 0; i < swapchainImageCount; i++)
-      {
-        vk::ImageViewCreateInfo
-          viewCI(vk::ImageViewCreateFlags(),
-                 images[i],
-                 vk::ImageViewType::e2D,
-                 format,
-                 vk::ComponentMapping(),
-                 vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor,
-                                           0, // baseMipLevel
-                                           1, // levelCount
-                                           0, // baseArrayLayer
-                                           1) // layerCount
-        );
-        c->device.createImageView(&viewCI, nullptr, &views[i]);
-      }
-
-      // RenderPass
-
-      vk::AttachmentDescription
-        colorAttachment(vk::AttachmentDescriptionFlags(),
-                        surfaceForm.format, 
-                        vk::SampleCountFlagBits::e1,
-                        vk::AttachmentLoadOp::eClear,
-                        vk::AttachmentStoreOp::eStore,
-                        vk::AttachmentLoadOp::eDontCare,
-                        vk::AttachmentStoreOp::eDontCare,
-                        vk::ImageLayout::eUndefined,
-                        vk::ImageLayout::ePresentSrcKHR);
-      vk::AttachmentReference
-              colorAttachmentRef(0,
-                                 vk::ImageLayout::eColorAttachmentOptimal);
-      vk::SubpassDescription subpass(vk::SubpassDescriptionFlags(),
-                                     vk::PipelineBindPoint::eGraphics,
-                                     0,
-                                     nullptr,
-                                     1,
-                                     &colorAttachmentRef,
-                                     nullptr,
-                                     nullptr,
-                                     0,
-                                     nullptr);
-      vk::SubpassDependency
-          subpassDependency(0,
-                            VK_SUBPASS_EXTERNAL,
-                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                            vk::AccessFlags(),
-                            vk::AccessFlagBits::eColorAttachmentWrite,
-                            vk::DependencyFlags()
-                            );
-      
-      vk::RenderPassCreateInfo renderPassCI(vk::RenderPassCreateFlags(),
-                                            1,
-                                            &colorAttachment,
-                                            1,
-                                            &subpass,
-                                            1,
-                                            &subpassDependency);
-      c->device.createRenderPass(&renderPassCI, nullptr, &renderPass);
-      
-      // Framebuffers
-      framebuffers.resize(views.size());
-      for(size_t i = 0; i < views.size(); i++)
-      {
-        vk::ImageView attachments[] =
-        {
-          views[i]
-        };
-        vk::FramebufferCreateInfo framebufferCI(vk::FramebufferCreateFlags(),
-                                                renderPass,
-                                                1,
-                                                attachments,
-                                                extent.width,
-                                                extent.height,
-                                                1);
-        c->device.createFramebuffer(&framebufferCI, nullptr, &framebuffers[i]);
-      }  
-    }
-  };
-
-  
-
   class TestRenderer {
   public:
     Context c;
@@ -422,6 +215,9 @@ namespace ngfx
     }
 
     // TODO: dynamic state on viewport/scissor to speed up resize
+    // Should implement working resize code first
+    // TODO: Investigate whether there is any performance benefit to
+    // using derivatives with any vendor, for now just using a single cache
     void buildTestGraphicsPipeline(void)
     {
       auto vertShaderCode = util::readFile("shaders/vert.spv");
@@ -575,8 +371,8 @@ namespace ngfx
                                                 0,
                                                 nullptr,
                                                 -1);
-      // TODO: add pipeline cache
-      c.device.createGraphicsPipelines(nullptr,
+
+      c.device.createGraphicsPipelines(c.pipelineCache,
                                        1,
                                        &pipelineCI,
                                        nullptr,
@@ -846,4 +642,4 @@ namespace ngfx
     }
   };
 }
-#endif // CONTEXT_H
+#endif // CONTEXT_H   

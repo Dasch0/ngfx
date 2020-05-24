@@ -10,9 +10,7 @@
  */
 
 #include "ngfx.hpp"
-#include "config.hpp"
-#include "context.hpp"
-#include "util.hpp"
+#include "test_renderer.hpp"
 
 int main() {
   ngfx::TestRenderer app;

@@ -1,195 +1,140 @@
-#ifndef UTIL_H
-#define UTIL_H
 
+#include "util.hpp"
 #include "ngfx.hpp"
 #include "config.hpp"
+#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_core.h>
 
 namespace ngfx
 {
   namespace util
   {
-    template <typename T, size_t N>
-      constexpr size_t array_size(T (&)[N]) {
-            return N;
-      }
-
     uint32_t findMemoryType(vk::PhysicalDevice &phys,
                             uint32_t typeFilter,
                             vk::MemoryPropertyFlags requiredProps);
 
-    struct QueueFamilyIndices
+    bool QueueFamilyIndices::isValid()
     {
-      std::optional<uint32_t> graphicsFamily;
-      std::optional<uint32_t> presentFamily;
-      std::optional<uint32_t> transferFamily;
-
-      bool isValid() {
-          return graphicsFamily.has_value() 
-            && presentFamily.has_value()
-            && transferFamily.has_value();
-      }
-    };
-
-    struct SwapchainSupportDetails {
-      std::vector<vk::SurfaceFormatKHR> formats;
-      std::vector<vk::PresentModeKHR> presentModes;
-      vk::SurfaceCapabilitiesKHR capabilites;
-      uint32_t padding;
-    };
-
-    struct SemaphoreSet {
-      vk::Semaphore imageAvailable;
-      vk::Semaphore renderComplete;
-    };
+      return graphicsFamily.has_value() 
+        && presentFamily.has_value()
+        && transferFamily.has_value();
+    }
 
     //TODO: Refactor along with vertex binding and attr code to make this useful
-    //TODO: AOSOA layout
-    struct Vertex {
-      glm::vec2 pos;
-      glm::vec3 color;
-      glm::vec2 texCoord;
-
-      static vk::VertexInputBindingDescription getBindingDescription()
-      {
-        vk::VertexInputBindingDescription
-            bindingDescription(0,
-                               sizeof(util::Vertex),
-                               vk::VertexInputRate::eVertex);
-        return bindingDescription;
-      }
-    };
+    vk::VertexInputBindingDescription Vertex::getBindingDescription()
+    {
+    vk::VertexInputBindingDescription
+          bindingDescription(0,
+                             sizeof(util::Vertex),
+                             vk::VertexInputRate::eVertex);
+      return bindingDescription;
+    }
 
     //TODO: Refactor along with vertex binding and attr code to make this useful
-    struct Instance {
-      glm::vec2 pos;
-
-      static vk::VertexInputBindingDescription getBindingDescription(void)
-      {
-        vk::VertexInputBindingDescription
-            bindingDescription(1,
-                               sizeof(util::Instance),
-                               vk::VertexInputRate::eInstance);
-        return bindingDescription;
-      }
-    };
-
-    struct Mvp {
-      glm::mat4 model;
-      glm::mat4 view;
-      glm::mat4 proj;
-    };
-
-    // Abstracts buffer and transfer semantics for a fast uniform/vertex buffer
-    // that is easy to work with on the CPU side
-    // TODO: batch buffer allocations
-    struct FastBuffer
+    vk::VertexInputBindingDescription Instance::getBindingDescription(void)
     {
-    public:
-      bool valid;
-      vk::Device *device;
-      vk::PhysicalDevice *phys;
-      vk::CommandPool *pool;
-      vk::DeviceSize size;
-      vk::BufferUsageFlags usage;
-      vk::Buffer stagingBuffer;
-      vk::DeviceMemory stagingMemory;
-      vk::Buffer localBuffer;
-      vk::DeviceMemory localMemory;
-      vk::CommandBuffer commandBuffer;
+      vk::VertexInputBindingDescription
+          bindingDescription(1,
+                             sizeof(util::Instance),
+                             vk::VertexInputRate::eInstance);
+      return bindingDescription;
+    }
 
-      FastBuffer(void) : valid(false) {};
+    FastBuffer::FastBuffer(void) : valid(false) {}
 
-      FastBuffer(vk::Device &dev,
-                 vk::PhysicalDevice &phys,
-                 vk::CommandPool &pool,
-                 vk::DeviceSize size,
-                 vk::BufferUsageFlags usage)
-        : valid(false), device(&dev), phys(&phys), pool(&pool), size(size),
-          usage(usage)
+    FastBuffer::FastBuffer(vk::Device &dev,
+                           vk::PhysicalDevice &phys,
+                           vk::CommandPool &pool,
+                           vk::DeviceSize size,
+                           vk::BufferUsageFlags usage)
+      : valid(false), device(&dev), phys(&phys), pool(&pool), size(size),
+      usage(usage)
       {}
 
-      void init(void)
-      {
-        vk::BufferCreateInfo stagingCI(vk::BufferCreateFlagBits(),
-                                      size,
-                                      vk::BufferUsageFlagBits::eTransferSrc,
-                                      // TODO: support concurrent
-                                      vk::SharingMode::eExclusive,
-                                      0,
-                                      nullptr);
-        device->createBuffer(&stagingCI,
-                             nullptr,
-                             &stagingBuffer);
+    void FastBuffer::init(void)
+    {
+      vk::BufferCreateInfo stagingCI(vk::BufferCreateFlagBits(),
+                                    size,
+                                    vk::BufferUsageFlagBits::eTransferSrc,
+                                    // TODO: support concurrent
+                                    vk::SharingMode::eExclusive,
+                                    0,
+                                    nullptr);
+      device->createBuffer(&stagingCI,
+                           nullptr,
+                           &stagingBuffer);
 
-        vk::BufferCreateInfo localCI(vk::BufferCreateFlagBits(),
-                                      size,
-                                      vk::BufferUsageFlagBits::eTransferDst
-                                      | usage,
-                                      // TODO: support concurrent
-                                      vk::SharingMode::eExclusive,
-                                      0,
-                                      nullptr);
-        device->createBuffer(&localCI,
-                             nullptr,
-                             &localBuffer);
+      vk::BufferCreateInfo localCI(vk::BufferCreateFlagBits(),
+                                    size,
+                                    vk::BufferUsageFlagBits::eTransferDst
+                                    | usage,
+                                    // TODO: support concurrent
+                                    vk::SharingMode::eExclusive,
+                                    0,
+                                    nullptr);
+      device->createBuffer(&localCI,
+                           nullptr,
+                           &localBuffer);
 
-        vk::MemoryRequirements stagingReqs =
-            device->getBufferMemoryRequirements(stagingBuffer);
-        vk::MemoryRequirements localReqs =
-            device->getBufferMemoryRequirements(localBuffer);
+      vk::MemoryRequirements stagingReqs =
+          device->getBufferMemoryRequirements(stagingBuffer);
+      vk::MemoryRequirements localReqs =
+          device->getBufferMemoryRequirements(localBuffer);
 
-        uint32_t stagingIndex =
-            util::findMemoryType(*phys,
-                                 stagingReqs.memoryTypeBits,
-                                 vk::MemoryPropertyFlagBits::eHostVisible
-                                 | vk::MemoryPropertyFlagBits::eHostCoherent
-                                 | vk::MemoryPropertyFlagBits::eHostCached);
-        uint32_t localIndex =
-            util::findMemoryType(*phys,
-                                 localReqs.memoryTypeBits,
-                                 vk::MemoryPropertyFlagBits::eDeviceLocal);
+      uint32_t stagingIndex =
+          util::findMemoryType(*phys,
+                               stagingReqs.memoryTypeBits,
+                               vk::MemoryPropertyFlagBits::eHostVisible
+                               | vk::MemoryPropertyFlagBits::eHostCoherent
+                               | vk::MemoryPropertyFlagBits::eHostCached);
+      uint32_t localIndex =
+          util::findMemoryType(*phys,
+                               localReqs.memoryTypeBits,
+                               vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-        vk::MemoryAllocateInfo stagingAllocInfo(stagingReqs.size, stagingIndex);
-        device->allocateMemory(&stagingAllocInfo, nullptr, &stagingMemory);
-        device->bindBufferMemory(stagingBuffer, stagingMemory, 0);
-        vk::MemoryAllocateInfo localAllocInfo(localReqs.size, localIndex);
-        device->allocateMemory(&stagingAllocInfo, nullptr, &localMemory);
-        device->bindBufferMemory(localBuffer, localMemory, 0);
+      vk::MemoryAllocateInfo stagingAllocInfo(stagingReqs.size, stagingIndex);
+      device->allocateMemory(&stagingAllocInfo, nullptr, &stagingMemory);
+      device->bindBufferMemory(stagingBuffer, stagingMemory, 0);
+      vk::MemoryAllocateInfo localAllocInfo(localReqs.size, localIndex);
+      device->allocateMemory(&stagingAllocInfo, nullptr, &localMemory);
+      device->bindBufferMemory(localBuffer, localMemory, 0);
 
-        // Create and record transfer command buffer
-        vk::CommandBufferAllocateInfo allocInfo(*pool,
-                                                vk::CommandBufferLevel::ePrimary,
-                                                1);
-        commandBuffer = device->allocateCommandBuffers(allocInfo).value.front();
+      // Create and record transfer command buffer
+      vk::CommandBufferAllocateInfo allocInfo(*pool,
+                                              vk::CommandBufferLevel::ePrimary,
+                                              1);
+      device->allocateCommandBuffers(&allocInfo, &commandBuffer);
 
-        vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlags(),
-                                             nullptr);
-        commandBuffer.begin(beginInfo);
-        vk::BufferCopy copyRegion(0, 0, size);
-        commandBuffer.copyBuffer(stagingBuffer, localBuffer, 1, (const vk::BufferCopy *) &copyRegion);
-        commandBuffer.end();
+      vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlags(),
+                                           nullptr);
+      commandBuffer.begin(beginInfo);
+      vk::BufferCopy copyRegion(0, 0, size);
+      commandBuffer.copyBuffer(stagingBuffer,
+                               localBuffer,
+                               1,
+                               (const vk::BufferCopy *) &copyRegion);
+      commandBuffer.end();
 
-        // Map memory
-        device->mapMemory(stagingMemory, 0, size, vk::MemoryMapFlags(), &_handle);
-        valid = true;
-      }
+      // Map memory
+      device->mapMemory(stagingMemory, 0, size, vk::MemoryMapFlags(), &_handle);
+      valid = true;
+    }
 
-      void stage(void* data)
+      void FastBuffer::stage(void* data)
       {
         assert(valid);
         memcpy(_handle, data, size);
       }
 
       // TODO: add fences for external sync
-      void copy(vk::Queue q)
+      void FastBuffer::copy(vk::Queue q)
       {
         assert(valid);
         vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
         q.submit(1, &submitInfo, vk::Fence());
       }
 
-      void blockingCopy(vk::Queue q)
+      void FastBuffer::blockingCopy(vk::Queue q)
       {
         assert(valid);
         vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
@@ -197,60 +142,22 @@ namespace ngfx
         q.waitIdle();
       }
 
-      ~FastBuffer(void)
+      FastBuffer::~FastBuffer(void)
       {
         if (valid)
         {
           device->unmapMemory(stagingMemory);
-          device->freeCommandBuffers(*pool, 1, (const vk::CommandBuffer *)&commandBuffer);
+          device->freeCommandBuffers(*pool,
+                                     1,
+                                     (const vk::CommandBuffer *)&commandBuffer);
           device->freeMemory(stagingMemory);
           device->freeMemory(localMemory);
           device->destroyBuffer(stagingBuffer);
           device->destroyBuffer(localBuffer);
         }
       }
-    private:
-      void *_handle;
-    };
 
-    struct Fbo
-    {
-    public:
-      vk::Image image;
-      vk::ImageView view;
-      vk::DeviceMemory mem;
-      vk::Framebuffer frame;
-    };
-
-    const Vertex testVertices[] = {
-      {{-0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 0.0f}},
-      {{0.0f, 0.5f}, {0.9f, 0.9f, 0.9f}, {1.0f, 0.0f}},
-      {{0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {1.0f, 1.0f}},
-    };
-
-    const uint16_t testIndices[] = {
-      0, 1, 2, 0
-    };
-
-    const Instance testInstances[] = {
-      {{2.0, 2.0}},
-      {{2.0, 0.0}},
-      {{2.0, -2.0}},
-      {{0.0, 2.0}},
-      {{0.0, 0.0}},
-      {{0.0, -2.0}},
-      {{-2.0, 2.0}},
-      {{-2.0, 0.0}},
-      {{-2.0, -2.0}},
-    };
-
-    const uint32_t kTestInstanceCount = 9;
-
-    /*
-     * TODO: Organize static vs externed functions
-     */
-
-    static std::vector<const char*> getRequiredExtensions(bool debug)
+    std::vector<const char*> getRequiredExtensions(bool debug)
     {
       // Get required glfw Extensions
       uint32_t glfwExtensionCount = 0;
@@ -268,7 +175,7 @@ namespace ngfx
       return extensions;
     }
 
-    static bool checkValidationLayerSupport(void)
+    bool checkValidationLayerSupport(void)
     {
       uint32_t layerCount = 0;
 
@@ -296,7 +203,7 @@ namespace ngfx
       return true;
     }
 
-    static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
         VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
         VkDebugUtilsMessageTypeFlagsEXT messageType,
         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -409,7 +316,7 @@ namespace ngfx
       }
     }
 
-    static bool isDeviceSuitable(vk::PhysicalDevice *phys,
+    bool isDeviceSuitable(vk::PhysicalDevice *phys,
                                  vk::SurfaceKHR *surface)
     {
       bool extensionsSupported = checkDeviceExtensionSupport(phys);
@@ -428,7 +335,7 @@ namespace ngfx
           ? true : false;
     }
 
-    static vk::SurfaceFormatKHR chooseSwapSurfaceFormat(
+    vk::SurfaceFormatKHR chooseSwapSurfaceFormat(
         const std::vector<vk::SurfaceFormatKHR> & formats)
     {
       for (const vk::SurfaceFormatKHR& f : formats)
@@ -442,7 +349,7 @@ namespace ngfx
       return formats[0];
     }
 
-    static vk::PresentModeKHR chooseSwapPresentMode(
+    vk::PresentModeKHR chooseSwapPresentMode(
         const std::vector<vk::PresentModeKHR>& presentModes)
     {
       for (const vk::PresentModeKHR p : presentModes)
@@ -459,9 +366,9 @@ namespace ngfx
       return vk::PresentModeKHR::eFifo;
     }
 
-    static vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities,
-                                         uint32_t windowWidth,
-                                         uint32_t windowHeight)
+   vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities,
+                                 uint32_t windowWidth,
+                                 uint32_t windowHeight)
     {
       if (capabilities.currentExtent.width != UINT32_MAX)
       {
@@ -484,9 +391,9 @@ namespace ngfx
      */
 
     void createInstance(std::string const& appName,
-                                std::string const& engineName,
-                                uint32_t apiVersion,
-                                vk::Instance *instance)
+                        std::string const& engineName,
+                        uint32_t apiVersion,
+                        vk::Instance *instance)
     {
       vk::ApplicationInfo applicationInfo(appName.c_str(),
                                           1,
@@ -620,7 +527,7 @@ namespace ngfx
       physicalDevice->createDevice(&deviceCI, nullptr, device);
     }
 
-    static std::vector<char> readFile(const std::string& filename)
+    std::vector<char> readFile(const std::string& filename)
     {
       std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
@@ -640,6 +547,7 @@ namespace ngfx
       return buffer;
     }
 
+    // TODO: Fix copy constructor use, add shader module pointer as arg
     vk::ShaderModule createShaderModule(vk::Device device,
                                         const std::vector<char>& code)
     {
@@ -647,17 +555,21 @@ namespace ngfx
                                           code.size(),
                                           reinterpret_cast<const uint32_t*>(
                                             code.data()));
-
-      return device.createShaderModule(shaderCI).value;
+      vk::ShaderModule shader;
+      device.createShaderModule(&shaderCI, nullptr, &shader);
+      return shader;
     }
 
+    // TODO: Fix copy constructor use, add pool pointer as arg
     vk::CommandPool createCommandPool(vk::Device device,
                                       QueueFamilyIndices indices)
     {
       vk::CommandPoolCreateInfo poolCI(vk::CommandPoolCreateFlags(),
                                        indices.graphicsFamily.value());
 
-      return device.createCommandPool(poolCI).value;
+      vk::CommandPool pool;
+      device.createCommandPool(&poolCI, nullptr, &pool);
+      return pool;
     }
 
     uint32_t findMemoryType(vk::PhysicalDevice &phys,
@@ -670,7 +582,8 @@ namespace ngfx
       for (uint32_t i = 0; i < memProps.memoryTypeCount; i++)
       {
         if ((typeFilter & (1 << i)
-            && (memProps.memoryTypes[i].propertyFlags & requiredProps) == requiredProps))
+            && (memProps.memoryTypes[i].propertyFlags
+                & requiredProps) == requiredProps))
         {
           return i;
         }
@@ -679,4 +592,3 @@ namespace ngfx
     }
   }
 }
-#endif // UTIL_H

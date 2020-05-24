@@ -1,16 +1,24 @@
 # Add sources
 set(
-    SOURCES
-        "src/main.cpp"
-        "src/ngfx.hpp"
-        "src/config.hpp"
-        "src/util.hpp"
-        "src/context.hpp"
+  SOURCES
+    "src/main.cpp"
+    "src/context.cpp"
+    "src/util.cpp"
+    "src/swap_data.cpp"
 )
 
+set(
+  HEADERS
+    "inc/config.hpp"
+    "inc/context.hpp"
+    "inc/ngfx.hpp"
+    "inc/util.hpp"
+    "inc/swap_data.hpp"
+    "inc/test_renderer.hpp"
+)
 
-add_executable(ngfx ${SOURCES})
-target_include_directories(ngfx PUBLIC "include")
+add_executable(ngfx ${SOURCES} ${HEADERS})
+target_include_directories(ngfx PUBLIC "inc")
 target_include_directories(ngfx PRIVATE Vulkan::Vulkan)
 target_link_libraries(ngfx glfw glm Vulkan::Vulkan)
 
