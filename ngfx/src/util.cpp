@@ -120,42 +120,42 @@ namespace ngfx
       valid = true;
     }
 
-      void FastBuffer::stage(void* data)
-      {
-        assert(valid);
-        memcpy(_handle, data, size);
-      }
+    void FastBuffer::stage(void* data)
+    {
+      assert(valid);
+      memcpy(_handle, data, size);
+    }
 
-      // TODO: add fences for external sync
-      void FastBuffer::copy(vk::Queue q)
-      {
-        assert(valid);
-        vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
-        q.submit(1, &submitInfo, vk::Fence());
-      }
+    // TODO: add fences for external sync
+    void FastBuffer::copy(vk::Queue q)
+    {
+      assert(valid);
+      vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
+      q.submit(1, &submitInfo, vk::Fence());
+    }
 
-      void FastBuffer::blockingCopy(vk::Queue q)
-      {
-        assert(valid);
-        vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
-        q.submit(1, &submitInfo, vk::Fence());
-        q.waitIdle();
-      }
+    void FastBuffer::blockingCopy(vk::Queue q)
+    {
+      assert(valid);
+      vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
+      q.submit(1, &submitInfo, vk::Fence());
+      q.waitIdle();
+    }
 
-      FastBuffer::~FastBuffer(void)
+    FastBuffer::~FastBuffer(void)
+    {
+      if (valid)
       {
-        if (valid)
-        {
-          device->unmapMemory(stagingMemory);
-          device->freeCommandBuffers(*pool,
-                                     1,
-                                     (const vk::CommandBuffer *)&commandBuffer);
-          device->freeMemory(stagingMemory);
-          device->freeMemory(localMemory);
-          device->destroyBuffer(stagingBuffer);
-          device->destroyBuffer(localBuffer);
-        }
+        device->unmapMemory(stagingMemory);
+        device->freeCommandBuffers(*pool,
+                                   1,
+                                   (const vk::CommandBuffer *)&commandBuffer);
+        device->freeMemory(stagingMemory);
+        device->freeMemory(localMemory);
+        device->destroyBuffer(stagingBuffer);
+        device->destroyBuffer(localBuffer);
       }
+    }
 
     std::vector<const char*> getRequiredExtensions(bool debug)
     {
@@ -547,8 +547,7 @@ namespace ngfx
       return buffer;
     }
 
-    // TODO: Fix copy constructor use, add shader module pointer as arg
-    vk::ShaderModule createShaderModule(vk::Device device,
+    vk::ShaderModule createShaderModule(vk::Device *device,
                                         const std::vector<char>& code)
     {
       vk::ShaderModuleCreateInfo shaderCI(vk::ShaderModuleCreateFlags(),
@@ -556,19 +555,18 @@ namespace ngfx
                                           reinterpret_cast<const uint32_t*>(
                                             code.data()));
       vk::ShaderModule shader;
-      device.createShaderModule(&shaderCI, nullptr, &shader);
+      device->createShaderModule(&shaderCI, nullptr, &shader);
       return shader;
     }
 
-    // TODO: Fix copy constructor use, add pool pointer as arg
-    vk::CommandPool createCommandPool(vk::Device device,
+    vk::CommandPool createCommandPool(vk::Device *device,
                                       QueueFamilyIndices indices)
     {
       vk::CommandPoolCreateInfo poolCI(vk::CommandPoolCreateFlags(),
                                        indices.graphicsFamily.value());
 
       vk::CommandPool pool;
-      device.createCommandPool(&poolCI, nullptr, &pool);
+      device->createCommandPool(&poolCI, nullptr, &pool);
       return pool;
     }
 

@@ -100,32 +100,10 @@ namespace ngfx
     public:
       vk::Image image;
       vk::ImageView view;
+      vk::Extent2D extent;
       vk::DeviceMemory mem;
       vk::Framebuffer frame;
     };
-
-    const Vertex testVertices[] = {
-      {{-0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 0.0f}},
-      {{0.0f, 0.5f}, {0.9f, 0.9f, 0.9f}, {1.0f, 0.0f}},
-      {{0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {1.0f, 1.0f}},
-    };
-
-    const uint16_t testIndices[] = {
-      0, 1, 2, 0
-    };
-
-    const Instance testInstances[] = {
-      {{2.0, 2.0}},
-      {{2.0, 0.0}},
-      {{2.0, -2.0}},
-      {{0.0, 2.0}},
-      {{0.0, 0.0}},
-      {{0.0, -2.0}},
-      {{-2.0, 2.0}},
-      {{-2.0, 0.0}},
-      {{-2.0, -2.0}},
-    };
-    const uint32_t kTestInstanceCount = 9;
 
     std::vector<const char*> getRequiredExtensions(bool debug);
     
@@ -183,11 +161,11 @@ namespace ngfx
     std::vector<char> readFile(const std::string& filename);
     
     // TODO: Fix copy constructor use, add shader module pointer as arg
-    vk::ShaderModule createShaderModule(vk::Device device,
+    vk::ShaderModule createShaderModule(vk::Device *device,
                                         const std::vector<char>& code);
     
     // TODO: Fix copy constructor use, add pool pointer as arg
-    vk::CommandPool createCommandPool(vk::Device device,
+    vk::CommandPool createCommandPool(vk::Device *device,
                                       QueueFamilyIndices indices);
     
     uint32_t findMemoryType(vk::PhysicalDevice &phys,
