@@ -87,7 +87,7 @@ namespace ngfx
       colorAttachment(vk::AttachmentDescriptionFlags(),
                       surfaceForm.format, 
                       vk::SampleCountFlagBits::e1,
-                      vk::AttachmentLoadOp::eClear,
+                      vk::AttachmentLoadOp::eDontCare,
                       vk::AttachmentStoreOp::eStore,
                       vk::AttachmentLoadOp::eDontCare,
                       vk::AttachmentStoreOp::eDontCare,
