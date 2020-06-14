@@ -42,15 +42,11 @@ namespace ngfx
       glm::vec2 pos;
       glm::vec3 color;
       glm::vec2 texCoord;
-
-      static vk::VertexInputBindingDescription getBindingDescription();
     };
 
     //TODO: Refactor along with vertex binding and attr code to make this useful
     struct Instance {
       glm::vec2 pos;
-
-      static vk::VertexInputBindingDescription getBindingDescription(void);
    };
 
     struct Mvp {

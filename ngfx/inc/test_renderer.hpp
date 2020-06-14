@@ -11,7 +11,8 @@
 #include "util.hpp"
 #include "context.hpp"
 #include "swap_data.hpp"
-
+#include "scene.hpp"
+#include "pipeline.hpp"
 
 // TODO: Docs
 namespace ngfx
@@ -54,18 +55,132 @@ namespace ngfx
     glm::vec2 offset;
   } const overlayOffset = {{0.5, -0.5}};
 
+  // TODO: clean up vertex input attribute and binding creation
+  // TODO: replace with lightweight vector class TBD
+  vk::VertexInputAttributeDescription attributeDesc[] = {
+    // Per Vertex data
+    vk::VertexInputAttributeDescription(
+        0,
+        0,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Vertex, pos)),
+    vk::VertexInputAttributeDescription(
+        1,
+        0,
+        vk::Format::eR32G32B32Sfloat,
+        offsetof(util::Vertex, color)),
+    vk::VertexInputAttributeDescription(
+        2,
+        0,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Vertex, texCoord)),
+    // Per Instance Data
+    vk::VertexInputAttributeDescription(
+        3,
+        1,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Instance, pos)),
+  };
 
-  class TestRenderer {
+  vk::VertexInputBindingDescription bindingDesc[] = {
+    vk::VertexInputBindingDescription(
+        0,
+        sizeof(util::Vertex),
+        vk::VertexInputRate::eVertex),
+    vk::VertexInputBindingDescription(
+        0,
+        sizeof(util::Instance),
+        vk::VertexInputRate::eInstance)
+  };
+  
+  class TestRenderer
+  {
   public:
     Context c;
     SwapData swapData;
+    Scene scene;
 
-    TestRenderer() : c(), swapData(&c), _currentFrame(0) {}
+    TestRenderer()
+      : c(), swapData(&c), scene(&c, &swapData), _currentFrame(0) {}
 
     void init(void)
     {
-      initVulkan();
+      _commandPool = util::createCommandPool(&c.device, c.qFamilies);
+      buildOffscreenRenderPass();
+      createTestOffscreenFbo();
+
+      util::buildLayout(&c.device, sizeof(_envMvp), &_offscreenLayout);
+      util::buildPipeline(
+          &c.device,
+          _offscreenFbo.extent,
+          bindingDesc,
+          util::array_size(bindingDesc),
+          attributeDesc,
+          util::array_size(attributeDesc),
+          "shaders/env_vert.spv",
+          "shaders/env_frag.spv",
+          &_offscreenLayout,
+          &_offscreenRenderPass,
+          &c.pipelineCache,
+          &_offscreenPipeline);
+
+      util::buildLayout(&c.device, sizeof(_envMvp), &_envLayout);
+      util::buildPipeline(
+          &c.device,
+          swapData.extent,
+          bindingDesc,
+          util::array_size(bindingDesc),
+          attributeDesc,
+          util::array_size(attributeDesc),
+          "shaders/env_vert.spv",
+          "shaders/env_frag.spv",
+          &_envLayout,
+          &swapData.renderPass,
+          &c.pipelineCache,
+          &_envPipeline);
+
+      createEnvBuffers(); 
+      util::buildLayout(&c.device, sizeof(glm::vec2), &_offscreenLayout);
+      util::buildPipeline(
+          &c.device,
+          swapData.extent,
+          bindingDesc,
+          util::array_size(bindingDesc),
+          attributeDesc,
+          util::array_size(attributeDesc),
+          "shaders/overlay_vert.spv",
+          "shaders/overlay_frag.spv",
+          &_overlayLayout,
+          &swapData.renderPass,
+          &c.pipelineCache,
+          &_overlayPipeline);
+ 
+      createOverlayDescriptorSetLayout();
+      createTextureSampler();
+      
+      createOverlayBuffers();
+      createDescriptorPool();
+      createOverlayDescriptorSets();
+
+      buildOffscreenCommandBuffer();
+      buildCommandBuffers();
+
+      // Create sync tools
+      for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
+      {
+        vk::SemaphoreCreateInfo semaphoreCI;
+        c.device.createSemaphore(&semaphoreCI,
+                                nullptr,
+                                &_semaphores[i].imageAvailable);
+        c.device.createSemaphore(&semaphoreCI,
+                                nullptr,
+                                &_semaphores[i].renderComplete);
+        vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);
+        c.device.createFence(&fenceCI, nullptr, &_inFlightFences[i]);
+      }
+      swapData.fences.resize(swapData.images.size(), vk::Fence(nullptr));
     }
+
     void renderTest()
     {
       testLoop();
@@ -104,41 +219,6 @@ namespace ngfx
     vk::Sampler _sampler;
 
 
-    void initVulkan(void)
-    { 
-      _commandPool = util::createCommandPool(&c.device, c.qFamilies);
-      createOverlayDescriptorSetLayout();
-      createTextureSampler();
-      buildOffscreenRenderPass();
-      createTestOffscreenFbo();
-      buildOffscreenPipeline();
-      buildEnvPipeline();
-      createEnvBuffers();
-
-      buildOverlayPipeline();
-      createOverlayBuffers();
-      createDescriptorPool();
-      createOverlayDescriptorSets();
-
-      buildOffscreenCommandBuffer();
-      buildCommandBuffers();
-
-      for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
-      {
-        vk::SemaphoreCreateInfo semaphoreCI;
-        c.device.createSemaphore(&semaphoreCI,
-                                nullptr,
-                                &_semaphores[i].imageAvailable);
-        c.device.createSemaphore(&semaphoreCI,
-                                nullptr,
-                                &_semaphores[i].renderComplete);
-        vk::FenceCreateInfo fenceCI(vk::FenceCreateFlagBits::eSignaled);
-        c.device.createFence(&fenceCI, nullptr, &_inFlightFences[i]);
-      }
-      swapData.fences.resize(swapData.images.size(), vk::Fence(nullptr));
-    }
-
-    // TODO: pull loop out of Context class
     void testLoop(void)
     {
       double lastTime = glfwGetTime();
@@ -204,594 +284,96 @@ namespace ngfx
 
     void drawFrame(void)
     {
-      c.device.waitForFences(1, &_inFlightFences[_currentFrame], true, UINT64_MAX);
-      
       uint32_t imageIndex;
-      c.device.acquireNextImageKHR(swapData.swapchain, UINT64_MAX,
-                                   _semaphores[_currentFrame].imageAvailable,
-                                   vk::Fence(nullptr), &imageIndex);
+      { // Prepare frame
+        c.device.waitForFences(
+            1,
+            &_inFlightFences[_currentFrame],
+            true,
+            UINT64_MAX);
 
-      if (swapData.fences[imageIndex] != vk::Fence(nullptr)) {
-        c.device.waitForFences(1, &swapData.fences[imageIndex], true,
-                               UINT64_MAX);
+        c.device.acquireNextImageKHR(swapData.swapchain, UINT64_MAX,
+                                     _semaphores[_currentFrame].imageAvailable,
+                                     vk::Fence(nullptr), &imageIndex);
+
+        if (swapData.fences[imageIndex] != vk::Fence(nullptr))
+        {
+          c.device.waitForFences(1, &swapData.fences[imageIndex], true, UINT64_MAX);
+        }
+        swapData.fences[imageIndex] = _inFlightFences[_currentFrame];
+        c.device.resetFences(1, (const vk::Fence *)&_inFlightFences[_currentFrame]);
       }
-      swapData.fences[imageIndex] = _inFlightFences[_currentFrame];
-
-      c.device.resetFences(1, (const vk::Fence *)&_inFlightFences[_currentFrame]);
-
-      vk::PipelineStageFlags waitStages(
-          vk::PipelineStageFlagBits::eColorAttachmentOutput);
-      vk::SubmitInfo submitInfo(1, &_semaphores[_currentFrame].imageAvailable,
-                                &waitStages, 1, &commandBuffers[imageIndex], 1,
-                                &_semaphores[_currentFrame].renderComplete);
-      c.graphicsQueue.submit(1, &submitInfo, _inFlightFences[_currentFrame]);
-
-      vk::PresentInfoKHR presentInfo(
-          1, &_semaphores[_currentFrame].renderComplete, 1, &swapData.swapchain,
-          &imageIndex, nullptr);
-
-      c.presentQueue.presentKHR(&presentInfo);
-      _currentFrame = (_currentFrame + 1) % kMaxFramesInFlight;
-    }
-
-    void buildOffscreenRenderPass(void) {
-      vk::AttachmentDescription
-        colorAttachment(vk::AttachmentDescriptionFlags(),
-                        vk::Format::eR8G8B8A8Srgb,
-                        vk::SampleCountFlagBits::e1,
-                        vk::AttachmentLoadOp::eClear,
-                        vk::AttachmentStoreOp::eStore,
-                        vk::AttachmentLoadOp::eDontCare,
-                        vk::AttachmentStoreOp::eDontCare,
-                        vk::ImageLayout::eUndefined,
-                        vk::ImageLayout::eShaderReadOnlyOptimal);
-      vk::AttachmentReference
-              colorAttachmentRef(0,
-                                 vk::ImageLayout::eColorAttachmentOptimal);
-      vk::SubpassDescription subpass(vk::SubpassDescriptionFlags(),
-                                     vk::PipelineBindPoint::eGraphics,
-                                     0,
-                                     nullptr,
-                                     1,
-                                     &colorAttachmentRef,
-                                     nullptr,
-                                     nullptr,
-                                     0,
-                                     nullptr);
-      vk::SubpassDependency
-          subpassDependency(0,
-                            VK_SUBPASS_EXTERNAL,
-                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                            vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                            vk::AccessFlags(),
-                            vk::AccessFlagBits::eColorAttachmentWrite,
-                            vk::DependencyFlags()
-                            );
-
-      vk::RenderPassCreateInfo renderPassCI(vk::RenderPassCreateFlags(),
-                                            1,
-                                            &colorAttachment,
-                                            1,
-                                            &subpass,
-                                            1,
-                                            &subpassDependency);
-      c.device.createRenderPass(&renderPassCI, nullptr, &_offscreenRenderPass);
-    }
-    // TODO: dynamic state on viewport/scissor to speed up resize
-    // Should implement working resize code first
-    // TODO: Investigate whether there is any performance benefit to
-    // using derivatives with any vendor, for now just using a single cache
-    void buildEnvPipeline(void) {
-      auto vertShaderCode = util::readFile("shaders/env_vert.spv");
-      auto fragShaderCode = util::readFile("shaders/env_frag.spv");
-
-      vk::ShaderModule vertModule = 
-        util::createShaderModule(&c.device, vertShaderCode);
-      vk::ShaderModule fragModule =
-        util::createShaderModule(&c.device, fragShaderCode);
-
-      vk::PipelineShaderStageCreateInfo vertStageCI(
-          vk::PipelineShaderStageCreateFlags(),
-          vk::ShaderStageFlagBits::eVertex,
-          vertModule,
-          "main");
-
-      vk::PipelineShaderStageCreateInfo fragStageCI(
-          vk::PipelineShaderStageCreateFlags(),
-          vk::ShaderStageFlagBits::eFragment,
-          fragModule,
-          "main");
-
-      vk::PipelineShaderStageCreateInfo shaderStages[] = {
-        vertStageCI,
-        fragStageCI
-      };
-
-      vk::VertexInputBindingDescription bindingDesc[] = {
-        util::Vertex::getBindingDescription(),
-        util::Instance::getBindingDescription()
-      };
-
-      // TODO: clean up vertex input attribute and binding creation
-      vk::VertexInputAttributeDescription attributeDesc[] = {
-        // Per Vertex data
-        vk::VertexInputAttributeDescription(
-            0,
-            0,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Vertex, pos)),
-        vk::VertexInputAttributeDescription(
-            1,
-            0,
-            vk::Format::eR32G32B32Sfloat,
-            offsetof(util::Vertex, color)),
-        vk::VertexInputAttributeDescription(
-            2,
-            0,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Vertex, texCoord)),
-        // Per Instance Data
-        vk::VertexInputAttributeDescription(
-            3,
-            1,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Instance, pos)),
-      };
-
-      vk::PipelineVertexInputStateCreateInfo vertexInputCI(
-          vk::PipelineVertexInputStateCreateFlags(),
-          util::array_size(bindingDesc),
-          bindingDesc,
-          util::array_size(attributeDesc),
-          attributeDesc);
-
-      vk::PipelineInputAssemblyStateCreateInfo inputAssembly(
-          vk::PipelineInputAssemblyStateCreateFlags(),
-          vk::PrimitiveTopology::eLineStrip,
-          false);
-
-      vk::Viewport viewport(
-          0.0f,
-          0.0f,
-          swapData.extent.width,
-          swapData.extent.height,
-          0.0,
-          1.0);
-
-      vk::Rect2D scissor(vk::Offset2D(0, 0), swapData.extent);
-
-      vk::PipelineViewportStateCreateInfo viewportCI(
-          vk::PipelineViewportStateCreateFlags(),
-          1,
-          &viewport,
-          1,
-          &scissor);
-
-      vk::PipelineRasterizationStateCreateInfo rasterizerCI(
-          vk::PipelineRasterizationStateCreateFlags(),
-          false,
-          false,
-          vk::PolygonMode::eFill,
-          vk::CullModeFlagBits::eBack,
-          vk::FrontFace::eCounterClockwise,
-          false,
-          0.0f,
-          0.0f,
-          0.0f,
-          1.0f);
-
-      vk::PipelineMultisampleStateCreateInfo multisamplingCI(
-          vk::PipelineMultisampleStateCreateFlags(),
-          vk::SampleCountFlagBits::e1,
-          false,
-          1.0f,
-          nullptr,
-          false,
-          false);
-
-      vk::PipelineColorBlendAttachmentState colorBlendAttachment(
-          false,
-          vk::BlendFactor::eOne,
-          vk::BlendFactor::eZero,
-          vk::BlendOp::eAdd,
-          vk::BlendFactor::eOne,
-          vk::BlendFactor::eZero,
-          vk::BlendOp::eAdd,
-          vk::ColorComponentFlagBits::eR
-          | vk::ColorComponentFlagBits::eG
-          | vk::ColorComponentFlagBits::eB
-          | vk::ColorComponentFlagBits::eA);
-
-      vk::PipelineColorBlendStateCreateInfo colorBlendingCI(
-          vk::PipelineColorBlendStateCreateFlags(),
-          false,
-          vk::LogicOp::eCopy,
-          1,
-          &colorBlendAttachment);
-
-      vk::DynamicState dynamicStates[] = {
-        vk::DynamicState::eViewport,
-        vk::DynamicState::eLineWidth
-      };
-
-      vk::PipelineDynamicStateCreateInfo dynamicStateCI(
-          vk::PipelineDynamicStateCreateFlags(),
-          2,
-          dynamicStates);
-
-      vk::PushConstantRange pushConstants[] = {
-        vk::PushConstantRange(vk::ShaderStageFlagBits::eVertex, 0, sizeof(_envMvp)),
-      };
-
-      vk::PipelineLayoutCreateInfo pipelineLayoutCI(
-          vk::PipelineLayoutCreateFlags(),
-          0,
-          nullptr,
-          util::array_size(pushConstants),
-          pushConstants);
-      c.device.createPipelineLayout(&pipelineLayoutCI, nullptr,
-                                    &_envLayout);
-
-      vk::GraphicsPipelineCreateInfo pipelineCI(
-          vk::PipelineCreateFlags(), 2, shaderStages, &vertexInputCI,
-          &inputAssembly, nullptr, &viewportCI, &rasterizerCI, &multisamplingCI,
-          nullptr, &colorBlendingCI, nullptr, _envLayout,
-          swapData.renderPass, 0, nullptr, -1);
-
-      c.device.createGraphicsPipelines(c.pipelineCache, 1, &pipelineCI, nullptr,
-                                       &_envPipeline);
-
-      c.device.destroyShaderModule(vertModule);
-      c.device.destroyShaderModule(fragModule);
-    }
-    // TODO: dynamic state on viewport/scissor to speed up resize
-    // Should implement working resize code first
-    // TODO: Investigate whether there is any performance benefit to
-    // using derivatives with any vendor, for now just using a single cache
-    void buildOffscreenPipeline(void) {
-      auto vertShaderCode = util::readFile("shaders/env_vert.spv");
-      auto fragShaderCode = util::readFile("shaders/env_frag.spv");
-
-      vk::ShaderModule vertModule = 
-        util::createShaderModule(&c.device, vertShaderCode);
-      vk::ShaderModule fragModule =
-        util::createShaderModule(&c.device, fragShaderCode);
-
-      vk::PipelineShaderStageCreateInfo vertStageCI(
-          vk::PipelineShaderStageCreateFlags(),
-          vk::ShaderStageFlagBits::eVertex,
-          vertModule,
-          "main");
-
-      vk::PipelineShaderStageCreateInfo fragStageCI(
-          vk::PipelineShaderStageCreateFlags(),
-          vk::ShaderStageFlagBits::eFragment,
-          fragModule,
-          "main");
-
-      vk::PipelineShaderStageCreateInfo shaderStages[] = {
-        vertStageCI,
-        fragStageCI
-      };
-
-      vk::VertexInputBindingDescription bindingDesc[] = {
-        util::Vertex::getBindingDescription(),
-        util::Instance::getBindingDescription()
-      };
-
-      // TODO: clean up vertex input attribute and binding creation
-      vk::VertexInputAttributeDescription attributeDesc[] = {
-        // Per Vertex data
-        vk::VertexInputAttributeDescription(
-            0,
-            0,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Vertex, pos)),
-        vk::VertexInputAttributeDescription(
-            1,
-            0,
-            vk::Format::eR32G32B32Sfloat,
-            offsetof(util::Vertex, color)),
-        vk::VertexInputAttributeDescription(
-            2,
-            0,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Vertex, texCoord)),
-        // Per Instance Data
-        vk::VertexInputAttributeDescription(
-            3,
-            1,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Instance, pos)),
-      };
-
-      vk::PipelineVertexInputStateCreateInfo vertexInputCI(
-          vk::PipelineVertexInputStateCreateFlags(),
-          util::array_size(bindingDesc),
-          bindingDesc,
-          util::array_size(attributeDesc),
-          attributeDesc);
-
-      vk::PipelineInputAssemblyStateCreateInfo inputAssembly(
-          vk::PipelineInputAssemblyStateCreateFlags(),
-          vk::PrimitiveTopology::eLineStrip,
-          false);
-
-      vk::Viewport viewport(
-          0.0f,
-          0.0f,
-          _offscreenFbo.extent.width,
-          _offscreenFbo.extent.height,
-          0.0,
-          1.0);
-
-      vk::Rect2D scissor(vk::Offset2D(0, 0), _offscreenFbo.extent);
-
-      vk::PipelineViewportStateCreateInfo viewportCI(
-          vk::PipelineViewportStateCreateFlags(),
-          1,
-          &viewport,
-          1,
-          &scissor);
-
-      vk::PipelineRasterizationStateCreateInfo rasterizerCI(
-          vk::PipelineRasterizationStateCreateFlags(),
-          false,
-          false,
-          vk::PolygonMode::eFill,
-          vk::CullModeFlagBits::eBack,
-          vk::FrontFace::eCounterClockwise,
-          false,
-          0.0f,
-          0.0f,
-          0.0f,
-          1.0f);
-
-      vk::PipelineMultisampleStateCreateInfo multisamplingCI(
-          vk::PipelineMultisampleStateCreateFlags(),
-          vk::SampleCountFlagBits::e1,
-          false,
-          1.0f,
-          nullptr,
-          false,
-          false);
-
-      vk::PipelineColorBlendAttachmentState colorBlendAttachment(
-          false,
-          vk::BlendFactor::eOne,
-          vk::BlendFactor::eZero,
-          vk::BlendOp::eAdd,
-          vk::BlendFactor::eOne,
-          vk::BlendFactor::eZero,
-          vk::BlendOp::eAdd,
-          vk::ColorComponentFlagBits::eR
-          | vk::ColorComponentFlagBits::eG
-          | vk::ColorComponentFlagBits::eB
-          | vk::ColorComponentFlagBits::eA);
-
-      vk::PipelineColorBlendStateCreateInfo colorBlendingCI(
-          vk::PipelineColorBlendStateCreateFlags(),
-          false,
-          vk::LogicOp::eCopy,
-          1,
-          &colorBlendAttachment);
-
-      vk::DynamicState dynamicStates[] = {
-        vk::DynamicState::eViewport,
-        vk::DynamicState::eLineWidth
-      };
-
-      vk::PipelineDynamicStateCreateInfo dynamicStateCI(
-          vk::PipelineDynamicStateCreateFlags(),
-          2,
-          dynamicStates);
-
-      vk::PushConstantRange pushConstants[] = {
-        vk::PushConstantRange(vk::ShaderStageFlagBits::eVertex, 0, sizeof(_envMvp)),
-      };
-
-      vk::PipelineLayoutCreateInfo pipelineLayoutCI(
-          vk::PipelineLayoutCreateFlags(),
-          0,
-          nullptr,
-          util::array_size(pushConstants),
-          pushConstants);
-      c.device.createPipelineLayout(&pipelineLayoutCI, nullptr,
-                                    &_offscreenLayout);
-
-      vk::GraphicsPipelineCreateInfo pipelineCI(
-          vk::PipelineCreateFlags(), 2, shaderStages, &vertexInputCI,
-          &inputAssembly, nullptr, &viewportCI, &rasterizerCI, &multisamplingCI,
-          nullptr, &colorBlendingCI, nullptr, _offscreenLayout,
-          _offscreenRenderPass, 0, nullptr, -1);
-
-      c.device.createGraphicsPipelines(c.pipelineCache, 1, &pipelineCI, nullptr,
-                                       &_offscreenPipeline);
-
-      c.device.destroyShaderModule(vertModule);
-      c.device.destroyShaderModule(fragModule);
-    }
-    // TODO: dynamic state on viewport/scissor to speed up resize
-    // Should implement working resize code first
-    // TODO: Investigate whether there is any performance benefit to
-    // using derivatives with any vendor, for now just using a single cache
-    void buildOverlayPipeline(void)
-    {
-      auto vertShaderCode = util::readFile("shaders/overlay_vert.spv");
-      auto fragShaderCode = util::readFile("shaders/overlay_frag.spv");
-
-      vk::ShaderModule vertModule = 
-        util::createShaderModule(&c.device, vertShaderCode);
-      vk::ShaderModule fragModule =
-        util::createShaderModule(&c.device, fragShaderCode);
-
-      vk::PipelineShaderStageCreateInfo vertStageCI(
-          vk::PipelineShaderStageCreateFlags(),
-          vk::ShaderStageFlagBits::eVertex,
-          vertModule,
-          "main");
-
-      vk::PipelineShaderStageCreateInfo fragStageCI(
-          vk::PipelineShaderStageCreateFlags(),
-          vk::ShaderStageFlagBits::eFragment,
-          fragModule,
-          "main");
-
-      vk::PipelineShaderStageCreateInfo shaderStages[] = {
-        vertStageCI,
-        fragStageCI
-      };
-
-      vk::VertexInputBindingDescription bindingDesc[] = {
-        util::Vertex::getBindingDescription(),
-      };
-
-      // TODO: clean up vertex input attribute and binding creation
-      vk::VertexInputAttributeDescription attributeDesc[] = {
-        // Per Vertex data
-        vk::VertexInputAttributeDescription(
-            0,
-            0,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Vertex, pos)),
-        vk::VertexInputAttributeDescription(
-            1,
-            0,
-            vk::Format::eR32G32B32Sfloat,
-            offsetof(util::Vertex, color)),
-        vk::VertexInputAttributeDescription(
-            2,
-            0,
-            vk::Format::eR32G32Sfloat,
-            offsetof(util::Vertex, texCoord)), 
-      };
-
-      vk::PipelineVertexInputStateCreateInfo vertexInputCI(
-          vk::PipelineVertexInputStateCreateFlags(),
-          util::array_size(bindingDesc),
-          bindingDesc,
-          util::array_size(attributeDesc),
-          attributeDesc);
-
-      vk::PipelineInputAssemblyStateCreateInfo inputAssembly(
-          vk::PipelineInputAssemblyStateCreateFlags(),
-          vk::PrimitiveTopology::eTriangleList,
-          false);
-
-      vk::Viewport viewport(
-          0.0f,
-          0.0f,
-          swapData.extent.width,
-          swapData.extent.height,
-          0.0,
-          1.0);
-
-      vk::Rect2D scissor(vk::Offset2D(0, 0), swapData.extent);
-
-      vk::PipelineViewportStateCreateInfo viewportCI(
-          vk::PipelineViewportStateCreateFlags(),
-          1,
-          &viewport,
-          1,
-          &scissor);
-
-      vk::PipelineRasterizationStateCreateInfo rasterizerCI(
-          vk::PipelineRasterizationStateCreateFlags(),
-          false,
-          false,
-          vk::PolygonMode::eFill,
-          vk::CullModeFlagBits::eBack,
-          vk::FrontFace::eClockwise,
-          false,
-          0.0f,
-          0.0f,
-          0.0f,
-          1.0f);
-
-      vk::PipelineMultisampleStateCreateInfo multisamplingCI(
-          vk::PipelineMultisampleStateCreateFlags(),
-          vk::SampleCountFlagBits::e1,
-          false,
-          1.0f,
-          nullptr,
-          false,
-          false);
-
-      vk::PipelineColorBlendAttachmentState colorBlendAttachment(
-          false,
-          vk::BlendFactor::eOne,
-          vk::BlendFactor::eZero,
-          vk::BlendOp::eAdd,
-          vk::BlendFactor::eOne,
-          vk::BlendFactor::eZero,
-          vk::BlendOp::eAdd,
-          vk::ColorComponentFlagBits::eR
-          | vk::ColorComponentFlagBits::eG
-          | vk::ColorComponentFlagBits::eB
-          | vk::ColorComponentFlagBits::eA);
-
-      vk::PipelineColorBlendStateCreateInfo colorBlendingCI(
-          vk::PipelineColorBlendStateCreateFlags(),
-          false,
-          vk::LogicOp::eCopy,
-          1,
-          &colorBlendAttachment);
-
-      vk::DynamicState dynamicStates[] = {
-        vk::DynamicState::eViewport,
-        vk::DynamicState::eLineWidth
-      };
-
-      vk::PipelineDynamicStateCreateInfo dynamicStateCI(
-          vk::PipelineDynamicStateCreateFlags(),
-          2,
-          dynamicStates);
-
-      // TODO: Pull out pipeline layout creation, seems reusable
-      // TODO: create a dedicated push constant struct for manipulating overlay
-      vk::PushConstantRange pushConstants[] = {
-        vk::PushConstantRange(vk::ShaderStageFlagBits::eVertex, 0, sizeof(glm::vec2)),
-      };
-
-      vk::PipelineLayoutCreateInfo pipelineLayoutCI(
-          vk::PipelineLayoutCreateFlags(),
-          1,
-          &_descLayouts,
-          util::array_size(pushConstants),
-          pushConstants);
-      c.device.createPipelineLayout(&pipelineLayoutCI, nullptr, &_overlayLayout);
-
-      vk::GraphicsPipelineCreateInfo pipelineCI(
-          vk::PipelineCreateFlags(),
-          2,
-          shaderStages,
-          &vertexInputCI,
-          &inputAssembly,
-          nullptr,
-          &viewportCI,
-          &rasterizerCI,
-          &multisamplingCI,
-          nullptr,
-          &colorBlendingCI,
-          nullptr,
-          _overlayLayout,
-          swapData.renderPass,
-          0,
-          nullptr,
-          -1);
-
-      c.device.createGraphicsPipelines(
-          c.pipelineCache,
-          1,
-          &pipelineCI,
-          nullptr,
-          &_overlayPipeline);
-
-      c.device.destroyShaderModule(vertModule);
-      c.device.destroyShaderModule(fragModule);
+      { // Draw frame
+        vk::PipelineStageFlags waitStages(
+            vk::PipelineStageFlagBits::eColorAttachmentOutput);
+        vk::SubmitInfo submitInfo(1, &_semaphores[_currentFrame].imageAvailable,
+                                  &waitStages, 1, &commandBuffers[imageIndex], 1,
+                                  &_semaphores[_currentFrame].renderComplete);
+        c.graphicsQueue.submit(1, &submitInfo, _inFlightFences[_currentFrame]);
+      }
+      { // Present frame 
+        vk::PresentInfoKHR presentInfo(
+            1, &_semaphores[_currentFrame].renderComplete, 1, &swapData.swapchain,
+            &imageIndex, nullptr);
     
+        c.presentQueue.presentKHR(&presentInfo);
+        _currentFrame = (_currentFrame + 1) % kMaxFramesInFlight;
+      }
     }
 
+    void buildOffscreenRenderPass(void)
+    {
+      vk::AttachmentDescription colorAttachment(
+          vk::AttachmentDescriptionFlags(),
+          vk::Format::eR8G8B8A8Srgb,
+          vk::SampleCountFlagBits::e1,
+          vk::AttachmentLoadOp::eClear,
+          vk::AttachmentStoreOp::eStore,
+          vk::AttachmentLoadOp::eDontCare,
+          vk::AttachmentStoreOp::eDontCare,
+          vk::ImageLayout::eUndefined,
+          vk::ImageLayout::eShaderReadOnlyOptimal);
+      
+      vk::AttachmentReference colorAttachmentRef(
+          0,
+          vk::ImageLayout::eColorAttachmentOptimal);
+      
+      vk::SubpassDescription subpass(
+          vk::SubpassDescriptionFlags(),
+          vk::PipelineBindPoint::eGraphics,
+          0,
+          nullptr,
+          1,
+          &colorAttachmentRef,
+          nullptr,
+          nullptr,
+          0,
+          nullptr);
+      
+      vk::SubpassDependency subpassDependency(
+          0,
+          VK_SUBPASS_EXTERNAL,
+          vk::PipelineStageFlagBits::eColorAttachmentOutput,
+          vk::PipelineStageFlagBits::eColorAttachmentOutput,
+          vk::AccessFlags(),
+          vk::AccessFlagBits::eColorAttachmentWrite,
+          vk::DependencyFlags());
+
+      vk::RenderPassCreateInfo renderPassCI(
+          vk::RenderPassCreateFlags(),
+          1,
+          &colorAttachment,
+          1,
+          &subpass,
+          1,
+          &subpassDependency);
+      
+      c.device.createRenderPass(
+          &renderPassCI,
+          nullptr,
+          &_offscreenRenderPass);
+    }
+    
     void buildOffscreenCommandBuffer(void)
     {
       updateTestMvp(nullptr);

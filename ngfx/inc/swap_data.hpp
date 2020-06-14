@@ -16,11 +16,11 @@ namespace ngfx
     std::vector<vk::Image> images;
     std::vector<vk::ImageView> views;
     std::vector<vk::Fence> fences;
-    vk::RenderPass renderPass;
-    std::vector<vk::Framebuffer> framebuffers;
     vk::Format format;
     vk::Extent2D extent;
-    Context *c;
+    
+    //reference to device, only used for destructor
+    vk::Device *device;
     
     SwapData(Context *pContext);
     ~SwapData();

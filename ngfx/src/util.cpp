@@ -20,26 +20,6 @@ namespace ngfx
         && transferFamily.has_value();
     }
 
-    //TODO: Refactor along with vertex binding and attr code to make this useful
-    vk::VertexInputBindingDescription Vertex::getBindingDescription()
-    {
-    vk::VertexInputBindingDescription
-          bindingDescription(0,
-                             sizeof(util::Vertex),
-                             vk::VertexInputRate::eVertex);
-      return bindingDescription;
-    }
-
-    //TODO: Refactor along with vertex binding and attr code to make this useful
-    vk::VertexInputBindingDescription Instance::getBindingDescription(void)
-    {
-      vk::VertexInputBindingDescription
-          bindingDescription(1,
-                             sizeof(util::Instance),
-                             vk::VertexInputRate::eInstance);
-      return bindingDescription;
-    }
-
     FastBuffer::FastBuffer(void) : valid(false) {}
 
     FastBuffer::FastBuffer(vk::Device &dev,

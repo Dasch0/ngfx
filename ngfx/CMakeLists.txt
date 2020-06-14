@@ -5,6 +5,8 @@ set(
     "src/context.cpp"
     "src/util.cpp"
     "src/swap_data.cpp"
+    "src/pipeline.cpp"
+    "src/scene.cpp"
 )
 
 set(
@@ -15,6 +17,8 @@ set(
     "inc/util.hpp"
     "inc/swap_data.hpp"
     "inc/test_renderer.hpp"
+    "inc/pipeline.hpp"
+    "inc/scene.hpp"
 )
 
 add_executable(ngfx ${SOURCES} ${HEADERS})

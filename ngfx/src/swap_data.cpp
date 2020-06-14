@@ -3,8 +3,8 @@
 
 namespace ngfx
 {
-  SwapData::SwapData(Context *pContext)
-    : c(pContext)
+  SwapData::SwapData(Context *c) 
+    : device(&c->device)
   {
     // Swapchain & Format
     
@@ -23,6 +23,7 @@ namespace ngfx
         imageCount > c->swapInfo.capabilites.maxImageCount) {
       imageCount = c->swapInfo.capabilites.maxImageCount;
     }
+    
 
     uint32_t indices[] = {
       c->qFamilies.graphicsFamily.value(),
@@ -79,82 +80,15 @@ namespace ngfx
                                          1) // layerCount
       );
       c->device.createImageView(&viewCI, nullptr, &views[i]);
-    }
-
-    // RenderPass
-
-    vk::AttachmentDescription
-      colorAttachment(vk::AttachmentDescriptionFlags(),
-                      surfaceForm.format, 
-                      vk::SampleCountFlagBits::e1,
-                      vk::AttachmentLoadOp::eDontCare,
-                      vk::AttachmentStoreOp::eStore,
-                      vk::AttachmentLoadOp::eDontCare,
-                      vk::AttachmentStoreOp::eDontCare,
-                      vk::ImageLayout::eUndefined,
-                      vk::ImageLayout::ePresentSrcKHR);
-    vk::AttachmentReference
-            colorAttachmentRef(0,
-                               vk::ImageLayout::eColorAttachmentOptimal);
-    vk::SubpassDescription subpass(vk::SubpassDescriptionFlags(),
-                                   vk::PipelineBindPoint::eGraphics,
-                                   0,
-                                   nullptr,
-                                   1,
-                                   &colorAttachmentRef,
-                                   nullptr,
-                                   nullptr,
-                                   0,
-                                   nullptr);
-    vk::SubpassDependency
-        subpassDependency(0,
-                          VK_SUBPASS_EXTERNAL,
-                          vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                          vk::PipelineStageFlagBits::eColorAttachmentOutput,
-                          vk::AccessFlags(),
-                          vk::AccessFlagBits::eColorAttachmentWrite,
-                          vk::DependencyFlags()
-                          );
-    
-    vk::RenderPassCreateInfo renderPassCI(vk::RenderPassCreateFlags(),
-                                          1,
-                                          &colorAttachment,
-                                          1,
-                                          &subpass,
-                                          1,
-                                          &subpassDependency);
-    c->device.createRenderPass(&renderPassCI, nullptr, &renderPass);
-    
-    // Framebuffers
-    framebuffers.resize(views.size());
-    for(size_t i = 0; i < views.size(); i++)
-    {
-      vk::ImageView attachments[] =
-      {
-        views[i]
-      };
-      vk::FramebufferCreateInfo framebufferCI(vk::FramebufferCreateFlags(),
-                                              renderPass,
-                                              1,
-                                              attachments,
-                                              extent.width,
-                                              extent.height,
-                                              1);
-      c->device.createFramebuffer(&framebufferCI, nullptr, &framebuffers[i]);
     }  
   }
 
   SwapData::~SwapData()
   {
-    for (auto fb : framebuffers)
-    {
-      c->device.destroyFramebuffer(fb);
-    }
-    c->device.destroyRenderPass(renderPass);
     for (auto view : views)
     {
-      c->device.destroyImageView(view);
+      device->destroyImageView(view);
     }
-    c->device.destroySwapchainKHR(swapchain);
+    device->destroySwapchainKHR(swapchain);
   }
 }
