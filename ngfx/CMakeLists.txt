@@ -7,6 +7,7 @@ set(
     "src/swap_data.cpp"
     "src/pipeline.cpp"
     "src/scene.cpp"
+    "src/overlay.cpp"
 )
 
 set(
@@ -19,6 +20,7 @@ set(
     "inc/test_renderer.hpp"
     "inc/pipeline.hpp"
     "inc/scene.hpp"
+    "inc/overlay.hpp"
 )
 
 add_executable(ngfx ${SOURCES} ${HEADERS})
