@@ -8,6 +8,7 @@ set(
     "src/pipeline.cpp"
     "src/scene.cpp"
     "src/overlay.cpp"
+    "src/camera_array.cpp"
 )
 
 set(
@@ -21,6 +22,7 @@ set(
     "inc/pipeline.hpp"
     "inc/scene.hpp"
     "inc/overlay.hpp"
+    "inc/camera_array.hpp"
 )
 
 add_executable(ngfx ${SOURCES} ${HEADERS})

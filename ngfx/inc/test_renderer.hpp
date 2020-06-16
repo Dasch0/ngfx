@@ -6,6 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_core.h>
+#include "camera_array.hpp"
 #include "ngfx.hpp"
 #include "config.hpp"
 #include "util.hpp"
@@ -14,6 +15,7 @@
 #include "scene.hpp"
 #include "overlay.hpp"
 #include "pipeline.hpp"
+#include "camera_array.hpp"
 
 // TODO: Docs
 namespace ngfx
@@ -55,7 +57,7 @@ namespace ngfx
   {
     glm::vec2 offset;
   } const overlayOffset = {{0.5, -0.5}};
-
+  
   // TODO: clean up vertex input attribute and binding creation
   // TODO: replace with lightweight vector class TBD
   vk::VertexInputAttributeDescription attributeDesc[] = {
@@ -93,7 +95,7 @@ namespace ngfx
         sizeof(util::Instance),
         vk::VertexInputRate::eInstance)
   };
-  
+ 
   class TestRenderer
   {
   public:
@@ -101,31 +103,15 @@ namespace ngfx
     SwapData swapData;
     Scene scene;
     Overlay overlay;
+    CameraArray cam;
 
     TestRenderer()
       : c(), swapData(&c), scene(&c, &swapData),
-      overlay(&c, &swapData), _currentFrame(0) {}
+      overlay(&c, &swapData), cam(&c), _currentFrame(0) {}
 
     void init(void)
     {
       _commandPool = util::createCommandPool(&c.device, c.qFamilies);
-      buildOffscreenRenderPass();
-      createTestOffscreenFbo();
-
-      util::buildLayout(&c.device, sizeof(_envMvp), &_offscreenLayout);
-      util::buildPipeline(
-          &c.device,
-          _offscreenFbo.extent,
-          bindingDesc,
-          util::array_size(bindingDesc),
-          attributeDesc,
-          util::array_size(attributeDesc),
-          "shaders/env_vert.spv",
-          "shaders/env_frag.spv",
-          &_offscreenLayout,
-          &_offscreenRenderPass,
-          &c.pipelineCache,
-          &_offscreenPipeline);
 
       util::buildLayout(&c.device, sizeof(_envMvp), &_envLayout);
       util::buildPipeline(
@@ -159,12 +145,9 @@ namespace ngfx
           &_overlayPipeline);
  
       createOverlayDescriptorSetLayout();
-      createTextureSampler();
-      
       createOverlayBuffers();
       createDescriptorPool();
       createOverlayDescriptorSets();
-
       buildOffscreenCommandBuffer();
       buildCommandBuffers();
 
@@ -318,87 +301,42 @@ namespace ngfx
         _currentFrame = (_currentFrame + 1) % kMaxFramesInFlight;
       }
     }
-
-    void buildOffscreenRenderPass(void)
-    {
-      vk::AttachmentDescription colorAttachment(
-          vk::AttachmentDescriptionFlags(),
-          vk::Format::eR8G8B8A8Srgb,
-          vk::SampleCountFlagBits::e1,
-          vk::AttachmentLoadOp::eClear,
-          vk::AttachmentStoreOp::eStore,
-          vk::AttachmentLoadOp::eDontCare,
-          vk::AttachmentStoreOp::eDontCare,
-          vk::ImageLayout::eUndefined,
-          vk::ImageLayout::eShaderReadOnlyOptimal);
-      
-      vk::AttachmentReference colorAttachmentRef(
-          0,
-          vk::ImageLayout::eColorAttachmentOptimal);
-      
-      vk::SubpassDescription subpass(
-          vk::SubpassDescriptionFlags(),
-          vk::PipelineBindPoint::eGraphics,
-          0,
-          nullptr,
-          1,
-          &colorAttachmentRef,
-          nullptr,
-          nullptr,
-          0,
-          nullptr);
-      
-      vk::SubpassDependency subpassDependency(
-          0,
-          VK_SUBPASS_EXTERNAL,
-          vk::PipelineStageFlagBits::eColorAttachmentOutput,
-          vk::PipelineStageFlagBits::eColorAttachmentOutput,
-          vk::AccessFlags(),
-          vk::AccessFlagBits::eColorAttachmentWrite,
-          vk::DependencyFlags());
-
-      vk::RenderPassCreateInfo renderPassCI(
-          vk::RenderPassCreateFlags(),
-          1,
-          &colorAttachment,
-          1,
-          &subpass,
-          1,
-          &subpassDependency);
-      
-      c.device.createRenderPass(
-          &renderPassCI,
-          nullptr,
-          &_offscreenRenderPass);
-    }
     
     void buildOffscreenCommandBuffer(void)
     {
       updateTestMvp(nullptr);
       vk::CommandBuffer *cmd = &offscreenCommandBuffer;
-      vk::CommandBufferAllocateInfo allocInfo(_commandPool,
-                                              vk::CommandBufferLevel::ePrimary,
-                                              1);
+      vk::CommandBufferAllocateInfo allocInfo(
+          _commandPool,
+          vk::CommandBufferLevel::ePrimary,
+          1);
+      
       c.device.allocateCommandBuffers(&allocInfo, cmd);
 
-
-      vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlags(),
-                                             nullptr);
+      vk::CommandBufferBeginInfo beginInfo(
+          vk::CommandBufferUsageFlags(),
+          nullptr);
+      
       vk::DeviceSize offsets[] = {0};
 
       // TODO: Fix weird code for clearValue
       // Currently requires two sub-classes to construct
-      const std::array<float, 4> clearColorPrimative = {0.1f, 0.1f, 0.1f,
-                                                        1.0f};
+      const std::array<float, 4> clearColorPrimative = 
+      {0.1f, 0.1f, 0.1f, 1.0f};
+
       vk::ClearColorValue clearColor(clearColorPrimative);
       const vk::ClearValue clearValue(clearColor);
       
-
       cmd->begin(beginInfo);
 
       vk::RenderPassBeginInfo envPassInfo(
-          _offscreenRenderPass, _offscreenFbo.frame,
-          vk::Rect2D(vk::Offset2D(0, 0), _offscreenFbo.extent), 1, &clearValue);
+          cam.pass,
+          cam.fbo.frame,
+          vk::Rect2D(
+            vk::Offset2D(0, 0),
+            cam.fbo.extent),
+          1,
+          &clearValue);
 
       cmd->beginRenderPass(envPassInfo,
           vk::SubpassContents::eInline);
@@ -556,7 +494,10 @@ namespace ngfx
     void createOverlayBuffers(void)
     {
       _overlayVertexBuffer = util::FastBuffer(
-          c.device, c.physicalDevice, _commandPool, sizeof(overlayVertices),
+          c.device,
+          c.physicalDevice,
+          _commandPool,
+          sizeof(overlayVertices),
           vk::BufferUsageFlagBits::eVertexBuffer);
 
       _overlayVertexBuffer.init();
@@ -564,8 +505,12 @@ namespace ngfx
       _overlayVertexBuffer.copy(c.graphicsQueue);
 
       _overlayIndexBuffer = util::FastBuffer(
-          c.device, c.physicalDevice, _commandPool, sizeof(overlayIndices),
+          c.device,
+          c.physicalDevice,
+          _commandPool,
+          sizeof(overlayIndices),
           vk::BufferUsageFlagBits::eIndexBuffer);
+      
       _overlayIndexBuffer.init();
       _overlayIndexBuffer.stage((void *)overlayIndices);
       _overlayIndexBuffer.copy(c.graphicsQueue);
@@ -607,10 +552,12 @@ namespace ngfx
     // TODO: Fix to work with push constants and keyboard input
     void updateTestMvp(vk::Semaphore waitSemaphore)
     {
-      static auto startTime = std::chrono::high_resolution_clock::now();
-
-      auto currentTime = std::chrono::high_resolution_clock::now();
-      float time = std::chrono::duration<float, std::chrono::seconds::period>
+      static auto startTime = 
+        std::chrono::high_resolution_clock::now();
+      auto currentTime =
+        std::chrono::high_resolution_clock::now();
+      float time =
+        std::chrono::duration<float, std::chrono::seconds::period>
           (currentTime - startTime).count();
       
       util::Mvp mvp;
@@ -626,7 +573,8 @@ namespace ngfx
       
       mvp.proj = glm::perspective(
           glm::radians(90.0f),
-          swapData.extent.width / (float)swapData.extent.height,
+          swapData.extent.width
+          / (float) swapData.extent.height,
           0.1f,
           100.0f);
       
@@ -640,7 +588,9 @@ namespace ngfx
     void createDescriptorPool(void)
     {
       vk::DescriptorPoolSize poolSize[] = {
-        vk::DescriptorPoolSize(vk::DescriptorType::eCombinedImageSampler, 1),
+        vk::DescriptorPoolSize(
+            vk::DescriptorType::eCombinedImageSampler,
+            1),
       };
 
       vk::DescriptorPoolCreateInfo poolInfo(
@@ -649,7 +599,10 @@ namespace ngfx
           util::array_size(poolSize),
           poolSize);
       
-      c.device.createDescriptorPool(&poolInfo, nullptr, &_descriptorPool);
+      c.device.createDescriptorPool
+        (&poolInfo, 
+         nullptr, 
+         &_descriptorPool);
     }
 
     void createOverlayDescriptorSetLayout(void)
@@ -668,7 +621,10 @@ namespace ngfx
           util::array_size(bindings),
           bindings); 
       
-      c.device.createDescriptorSetLayout(&layoutCI, nullptr, &_descLayouts);
+      c.device.createDescriptorSetLayout
+        (&layoutCI,
+         nullptr,
+         &_descLayouts);
     }
 
     void createOverlayDescriptorSets(void)
@@ -680,7 +636,7 @@ namespace ngfx
       c.device.allocateDescriptorSets(&allocInfo, &_descriptorSet);
 
       vk::DescriptorImageInfo imageInfo(overlay.sampler,
-                                        _offscreenFbo.view,
+                                        cam.fbo.view,
                                         vk::ImageLayout::eShaderReadOnlyOptimal);
 
       vk::WriteDescriptorSet descWrite[] = { 
@@ -697,79 +653,6 @@ namespace ngfx
                                     descWrite,
                                     0,
                                     nullptr);
-    }
-
-    void createTestOffscreenFbo(void)
-    {
-      uint w = 256;
-      uint h = 256;
-      vk::Image *i = &_offscreenFbo.image;
-      vk::DeviceMemory *m = &_offscreenFbo.mem;
-      vk::ImageView *v = &_offscreenFbo.view;
-      vk::Framebuffer *f = &_offscreenFbo.frame;
-
-      _offscreenFbo.extent = vk::Extent2D(w, h);
-      
-      vk::ImageCreateInfo imageCI(
-          vk::ImageCreateFlags(),
-          vk::ImageType::e2D,
-          vk::Format::eR8G8B8A8Srgb,
-          vk::Extent3D(w, h, 1),
-          1,
-          1,
-          vk::SampleCountFlagBits::e1,
-          vk::ImageTiling::eOptimal,
-          vk::ImageUsageFlagBits::eColorAttachment
-          | vk::ImageUsageFlagBits::eSampled
-          | vk::ImageUsageFlagBits::eTransferSrc,
-          vk::SharingMode::eExclusive);
-      
-      c.device.createImage(&imageCI, nullptr, i);
-
-      vk::MemoryRequirements memReqs;
-      c.device.getImageMemoryRequirements(*i, &memReqs);
-      
-      auto memType = util::findMemoryType(
-          c.physicalDevice,
-          memReqs.memoryTypeBits,
-          vk::MemoryPropertyFlagBits::eDeviceLocal);
-      
-      vk::MemoryAllocateInfo allocInfo(
-          memReqs.size,
-          memType);
-      
-      c.device.allocateMemory(&allocInfo, nullptr, m);
-      c.device.bindImageMemory(*i, *m, 0);
-
-      vk::ImageViewCreateInfo viewCI(
-          vk::ImageViewCreateFlags(),
-          *i,
-          vk::ImageViewType::e2D,
-          vk::Format::eR8G8B8A8Srgb,
-          vk::ComponentMapping(),
-          vk::ImageSubresourceRange(
-          vk::ImageAspectFlagBits::eColor,
-          0, //baseMipLevel
-          1, //levelCount
-          0, //baseArrayLayer
-          1)); //layerCount
-
-      c.device.createImageView(&viewCI, nullptr, v);
-
-      // Framebuffer
-      vk::FramebufferCreateInfo framebufferCI(
-          vk::FramebufferCreateFlags(),
-          _offscreenRenderPass,
-          1,
-          v,
-          w,
-          h,
-          1); // Layer
-      
-      c.device.createFramebuffer(
-          &framebufferCI,
-          nullptr,
-          f);
     }
   };
 }
