@@ -9,6 +9,8 @@ namespace ngfx
   {
     void buildLayout(
         vk::Device *device,
+        size_t descLayoutCount,
+        vk::DescriptorSetLayout *descLayouts,
         size_t pushSize,
         vk::PipelineLayout *pipelineLayout);
 
@@ -21,6 +23,7 @@ namespace ngfx
         size_t attributeSize,
         const std::string &vertPath,
         const std::string &fragPath,
+        bool overlay,
         vk::PipelineLayout *pipelineLayout,
         vk::RenderPass *renderPass,
         vk::PipelineCache *cache,

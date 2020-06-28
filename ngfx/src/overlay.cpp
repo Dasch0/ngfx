@@ -1,3 +1,4 @@
+#include "pipeline.hpp"
 #include "overlay.hpp"
 #include "vulkan/vulkan.hpp"
 #include "context.hpp"
@@ -5,6 +6,33 @@
 
 namespace ngfx
 {
+  vk::VertexInputAttributeDescription Overlay::attribute[] = {
+    // Per Vertex data
+    vk::VertexInputAttributeDescription(
+        0,
+        0,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Vertex, pos)),
+    vk::VertexInputAttributeDescription(
+        1,
+        0,
+        vk::Format::eR32G32B32Sfloat,
+        offsetof(util::Vertex, color)),
+    vk::VertexInputAttributeDescription(
+        2,
+        0,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Vertex, texCoord)),
+  };
+
+  vk::VertexInputBindingDescription Overlay::binding[] = {
+    vk::VertexInputBindingDescription(
+        0,
+        sizeof(util::Vertex),
+        vk::VertexInputRate::eVertex),
+  };
+
+ 
   Overlay::Overlay(Context *c, SwapData *s)
     : device(&c->device)
   {
@@ -101,6 +129,50 @@ namespace ngfx
       (&samplerCI,
        nullptr,
        &sampler);
+
+    // Descriptors
+    vk::DescriptorSetLayoutBinding bindings[] = {
+     vk::DescriptorSetLayoutBinding(
+         0,
+         vk::DescriptorType::eCombinedImageSampler,
+         1,
+         vk::ShaderStageFlagBits::eFragment, 
+         nullptr)
+    };
+    
+    vk::DescriptorSetLayoutCreateInfo layoutCI(
+        vk::DescriptorSetLayoutCreateFlags(),
+        util::array_size(bindings),
+        bindings); 
+    
+    device->createDescriptorSetLayout
+      (&layoutCI,
+       nullptr,
+       &descLayout);
+
+    // Layout
+    util::buildLayout(
+        device,
+        1,
+        &descLayout,
+        sizeof(glm::vec2),
+        &layout);
+    
+    // Pipeline
+    util::buildPipeline(
+        device,
+        s->extent,
+        binding,
+        util::array_size(binding),
+        attribute,
+        util::array_size(attribute),
+        "shaders/overlay_vert.spv",
+        "shaders/overlay_frag.spv",
+        true,
+        &layout,
+        &pass,
+        &c->pipelineCache,
+        &pipeline);
   }
 
   Overlay::~Overlay()

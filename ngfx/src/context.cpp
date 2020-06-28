@@ -43,6 +43,10 @@ namespace ngfx
                                 0,
                                 nullptr);
     device.createPipelineCache(&cacheCI, nullptr, &pipelineCache);
+
+    // command pool
+    // TODO: multiple pools for threaded recording
+    cmdPool = util::createCommandPool(&device,  qFamilies);
   };
 
     // TODO: Add destructor to clean up vk objs

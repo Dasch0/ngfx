@@ -6,9 +6,7 @@
 
 namespace ngfx
 {
-  // TODO: clean up vertex input attribute and binding creation
-  // TODO: replace with lightweight vector class TBD
-  vk::VertexInputAttributeDescription attribute[] = {
+  vk::VertexInputAttributeDescription CameraArray::attribute[] = {
     // Per Vertex data
     vk::VertexInputAttributeDescription(
         0,
@@ -33,13 +31,13 @@ namespace ngfx
         offsetof(util::Instance, pos)),
   };
 
-  vk::VertexInputBindingDescription binding[] = {
+  vk::VertexInputBindingDescription CameraArray::binding[] = {
     vk::VertexInputBindingDescription(
         0,
         sizeof(util::Vertex),
         vk::VertexInputRate::eVertex),
     vk::VertexInputBindingDescription(
-        0,
+        1,
         sizeof(util::Instance),
         vk::VertexInputRate::eInstance)
   };
@@ -47,10 +45,12 @@ namespace ngfx
   CameraArray::CameraArray(Context *c)
     : device(&c->device)
   {
-    buildFbo(c);
     buildRenderPass();
+    buildFbo(c);
     util::buildLayout(
         device,
+        0,
+        nullptr,
         sizeof(mvp),
         &layout);
     
@@ -63,6 +63,7 @@ namespace ngfx
         util::array_size(attribute),
         "shaders/env_vert.spv",
         "shaders/env_frag.spv",
+        false,
         &layout,
         &pass,
         &c->pipelineCache,
@@ -193,5 +194,10 @@ namespace ngfx
         &framebufferCI,
         nullptr,
         f);
+  }
+
+  CameraArray::~CameraArray()
+  {
+    device->destroyRenderPass(pass);
   }
 }

@@ -17,7 +17,7 @@ namespace ngfx
     vk::Sampler sampler;
     vk::PipelineLayout layout;
     vk::Pipeline pipeline;
-    vk::DescriptorSetLayout descLayout;
+
     // Pointer for device held for use in destructor only
     // Pointer must stay valid for lifetime
     vk::Device *device;

@@ -2,9 +2,48 @@
 #include "vulkan/vulkan.hpp"
 #include "context.hpp"
 #include "swap_data.hpp"
+#include "pipeline.hpp"
 
 namespace ngfx
 {
+  // TODO: clean up vertex input attribute and binding creation
+  // TODO: replace with lightweight vector class TBD
+  vk::VertexInputAttributeDescription Scene::attribute[] = {
+    // Per Vertex data
+    vk::VertexInputAttributeDescription(
+        0,
+        0,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Vertex, pos)),
+    vk::VertexInputAttributeDescription(
+        1,
+        0,
+        vk::Format::eR32G32B32Sfloat,
+        offsetof(util::Vertex, color)),
+    vk::VertexInputAttributeDescription(
+        2,
+        0,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Vertex, texCoord)),
+    // Per Instance Data
+    vk::VertexInputAttributeDescription(
+        3,
+        1,
+        vk::Format::eR32G32Sfloat,
+        offsetof(util::Instance, pos)),
+  };
+
+  vk::VertexInputBindingDescription Scene::binding[] = {
+    vk::VertexInputBindingDescription(
+        0,
+        sizeof(util::Vertex),
+        vk::VertexInputRate::eVertex),
+    vk::VertexInputBindingDescription(
+        1,
+        sizeof(util::Instance),
+        vk::VertexInputRate::eInstance)
+  };
+
   Scene::Scene(Context *c, SwapData *s)
     : device(&c->device)
   {
@@ -13,7 +52,7 @@ namespace ngfx
       colorAttachment(vk::AttachmentDescriptionFlags(),
                       s->format, 
                       vk::SampleCountFlagBits::e1,
-                      vk::AttachmentLoadOp::eDontCare,
+                      vk::AttachmentLoadOp::eClear,
                       vk::AttachmentStoreOp::eStore,
                       vk::AttachmentLoadOp::eDontCare,
                       vk::AttachmentStoreOp::eDontCare,
@@ -76,6 +115,28 @@ namespace ngfx
           &framebufferCI,
           nullptr,
           &frames[i]);
+
+    util::buildLayout(
+        device,
+        0,
+        nullptr,
+        sizeof(mvp),
+        &layout);
+    
+    util::buildPipeline(
+        &c->device,
+        s->extent,
+        binding,
+        util::array_size(binding),
+        attribute,
+        util::array_size(attribute),
+        "shaders/env_vert.spv",
+        "shaders/env_frag.spv",
+        false,
+        &layout,
+        &pass,
+        &c->pipelineCache,
+        &pipeline);
     }
   }
 

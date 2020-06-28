@@ -1,5 +1,3 @@
-
-
 #include <cstddef>
 #include <vulkan/vulkan.hpp>
 #include "util.hpp"
@@ -10,6 +8,8 @@ namespace ngfx
   {
     void buildLayout(
         vk::Device *device,
+        size_t descLayoutCount,
+        vk::DescriptorSetLayout *descLayouts,
         size_t pushSize,
         vk::PipelineLayout *pipelineLayout)
     {
@@ -22,8 +22,8 @@ namespace ngfx
 
       vk::PipelineLayoutCreateInfo pipelineLayoutCI(
           vk::PipelineLayoutCreateFlags(),
-          0,
-          nullptr,
+          descLayoutCount,
+          descLayouts,
           util::array_size(pushConstants),
           pushConstants);
 
@@ -46,6 +46,7 @@ namespace ngfx
         size_t attributeSize,
         const std::string &vertPath,
         const std::string &fragPath,
+        bool overlay, //TODO: Fix hacky way of passing primative type to pipeline
         vk::PipelineLayout *pipelineLayout,
         vk::RenderPass *renderPass,
         vk::PipelineCache *cache,
@@ -85,7 +86,8 @@ namespace ngfx
 
       vk::PipelineInputAssemblyStateCreateInfo inputAssembly(
           vk::PipelineInputAssemblyStateCreateFlags(),
-          vk::PrimitiveTopology::eLineStrip,
+          overlay ? vk::PrimitiveTopology::eTriangleList
+          : vk::PrimitiveTopology::eLineStrip,
           false);
 
       vk::Viewport viewport(
@@ -111,7 +113,8 @@ namespace ngfx
           false,
           vk::PolygonMode::eFill,
           vk::CullModeFlagBits::eBack,
-          vk::FrontFace::eCounterClockwise,
+          overlay ? vk::FrontFace::eClockwise
+          : vk::FrontFace::eCounterClockwise,
           false,
           0.0f,
           0.0f,

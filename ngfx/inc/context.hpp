@@ -30,6 +30,7 @@ namespace ngfx
     vk::Queue transferQueue;
     util::SwapchainSupportDetails swapInfo;
     vk::PipelineCache pipelineCache;
+    vk::CommandPool cmdPool;
 
     Context();
     ~Context();

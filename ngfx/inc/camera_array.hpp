@@ -10,6 +10,8 @@ namespace ngfx
   struct CameraArray
   {
     public:
+    static vk::VertexInputAttributeDescription attribute[];
+    static vk::VertexInputBindingDescription binding[];
     vk::RenderPass pass;
     util::Fbo fbo;
     vk::PipelineLayout layout;

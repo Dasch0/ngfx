@@ -57,45 +57,7 @@ namespace ngfx
   {
     glm::vec2 offset;
   } const overlayOffset = {{0.5, -0.5}};
-  
-  // TODO: clean up vertex input attribute and binding creation
-  // TODO: replace with lightweight vector class TBD
-  vk::VertexInputAttributeDescription attributeDesc[] = {
-    // Per Vertex data
-    vk::VertexInputAttributeDescription(
-        0,
-        0,
-        vk::Format::eR32G32Sfloat,
-        offsetof(util::Vertex, pos)),
-    vk::VertexInputAttributeDescription(
-        1,
-        0,
-        vk::Format::eR32G32B32Sfloat,
-        offsetof(util::Vertex, color)),
-    vk::VertexInputAttributeDescription(
-        2,
-        0,
-        vk::Format::eR32G32Sfloat,
-        offsetof(util::Vertex, texCoord)),
-    // Per Instance Data
-    vk::VertexInputAttributeDescription(
-        3,
-        1,
-        vk::Format::eR32G32Sfloat,
-        offsetof(util::Instance, pos)),
-  };
 
-  vk::VertexInputBindingDescription bindingDesc[] = {
-    vk::VertexInputBindingDescription(
-        0,
-        sizeof(util::Vertex),
-        vk::VertexInputRate::eVertex),
-    vk::VertexInputBindingDescription(
-        0,
-        sizeof(util::Instance),
-        vk::VertexInputRate::eInstance)
-  };
- 
   class TestRenderer
   {
   public:
@@ -111,40 +73,7 @@ namespace ngfx
 
     void init(void)
     {
-      _commandPool = util::createCommandPool(&c.device, c.qFamilies);
-
-      util::buildLayout(&c.device, sizeof(_envMvp), &_envLayout);
-      util::buildPipeline(
-          &c.device,
-          swapData.extent,
-          bindingDesc,
-          util::array_size(bindingDesc),
-          attributeDesc,
-          util::array_size(attributeDesc),
-          "shaders/env_vert.spv",
-          "shaders/env_frag.spv",
-          &_envLayout,
-          &scene.pass,
-          &c.pipelineCache,
-          &_envPipeline);
-
       createEnvBuffers(); 
-      util::buildLayout(&c.device, sizeof(glm::vec2), &_offscreenLayout);
-      util::buildPipeline(
-          &c.device,
-          swapData.extent,
-          bindingDesc,
-          util::array_size(bindingDesc),
-          attributeDesc,
-          util::array_size(attributeDesc),
-          "shaders/overlay_vert.spv",
-          "shaders/overlay_frag.spv",
-          &_overlayLayout,
-          &overlay.pass,
-          &c.pipelineCache,
-          &_overlayPipeline);
- 
-      createOverlayDescriptorSetLayout();
       createOverlayBuffers();
       createDescriptorPool();
       createOverlayDescriptorSets();
@@ -174,20 +103,11 @@ namespace ngfx
     ~TestRenderer(void) { cleanup(); }
 
   private:
-    vk::PipelineLayout _envLayout;
-    vk::Pipeline _envPipeline;
-    vk::PipelineLayout _offscreenLayout;
-    vk::Pipeline _offscreenPipeline;
-    vk::PipelineLayout _overlayLayout;
-    vk::Pipeline _overlayPipeline;
-    
-    vk::CommandPool _commandPool;
     std::vector<vk::CommandBuffer> commandBuffers;
     vk::CommandBuffer offscreenCommandBuffer;
 
     vk::DescriptorPool _descriptorPool;
     vk::DescriptorSet _descriptorSet;
-    vk::DescriptorSetLayout _descLayouts;
 
     util::FastBuffer _overlayVertexBuffer;
     util::FastBuffer _overlayIndexBuffer;
@@ -228,7 +148,7 @@ namespace ngfx
       _overlayIndexBuffer.~FastBuffer();
 
       c.device.destroyDescriptorPool(_descriptorPool);
-      c.device.destroyDescriptorSetLayout(_descLayouts);
+      c.device.destroyDescriptorSetLayout(overlay.descLayout);
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
@@ -237,7 +157,7 @@ namespace ngfx
         c.device.destroyFence(_inFlightFences[i]);
       }
 
-      c.device.destroyCommandPool(_commandPool);
+      c.device.destroyCommandPool(c.cmdPool);
       c.device.destroy();
       util::DestroyDebugUtilsMessengerEXT(c.instance, c.debugMessenger);
       vkDestroySurfaceKHR(c.instance, c.surface, nullptr);
@@ -307,7 +227,7 @@ namespace ngfx
       updateTestMvp(nullptr);
       vk::CommandBuffer *cmd = &offscreenCommandBuffer;
       vk::CommandBufferAllocateInfo allocInfo(
-          _commandPool,
+          c.cmdPool,
           vk::CommandBufferLevel::ePrimary,
           1);
       
@@ -341,10 +261,10 @@ namespace ngfx
       cmd->beginRenderPass(envPassInfo,
           vk::SubpassContents::eInline);
 
-      cmd->pushConstants(_offscreenLayout, vk::ShaderStageFlagBits::eVertex, 0,
+      cmd->pushConstants(cam.layout, vk::ShaderStageFlagBits::eVertex, 0,
                          sizeof(_envMvp), (void *)&_envMvp);
 
-      cmd->bindPipeline(vk::PipelineBindPoint::eGraphics, _offscreenPipeline);
+      cmd->bindPipeline(vk::PipelineBindPoint::eGraphics, cam.pipeline);
 
       cmd->bindVertexBuffers(
           0,
@@ -377,7 +297,7 @@ namespace ngfx
     {
       commandBuffers.resize(swapData.views.size());
       vk::CommandBufferAllocateInfo allocInfo(
-          _commandPool,
+          c.cmdPool,
           vk::CommandBufferLevel::ePrimary,
           (uint)commandBuffers.size());
       
@@ -420,14 +340,14 @@ namespace ngfx
             envPassInfo,
             vk::SubpassContents::eInline);
         commandBuffers[i].pushConstants(
-            _envLayout,
+            scene.layout,
             vk::ShaderStageFlagBits::eVertex,
             0,
             sizeof(_envMvp),
             (void *) &_envMvp);
         commandBuffers[i].bindPipeline(
             vk::PipelineBindPoint::eGraphics,
-            _envPipeline);
+            scene.pipeline);
         commandBuffers[i].bindVertexBuffers(
             0,
             1,
@@ -454,12 +374,12 @@ namespace ngfx
                                           vk::SubpassContents::eInline);
 
         commandBuffers[i].pushConstants(
-            _overlayLayout, vk::ShaderStageFlagBits::eVertex, 0,
+            overlay.layout, vk::ShaderStageFlagBits::eVertex, 0,
             sizeof(OverlayTestOffset), (void *)&overlayOffset);
 
         commandBuffers[i].bindPipeline(
             vk::PipelineBindPoint::eGraphics,
-            _overlayPipeline);
+            overlay.pipeline);
 
         commandBuffers[i].bindVertexBuffers(
             0,
@@ -473,7 +393,7 @@ namespace ngfx
             vk::IndexType::eUint16);
         commandBuffers[i].bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics,
-            _overlayLayout,
+            overlay.layout,
             0,
             1,
             &_descriptorSet,
@@ -496,7 +416,7 @@ namespace ngfx
       _overlayVertexBuffer = util::FastBuffer(
           c.device,
           c.physicalDevice,
-          _commandPool,
+          c.cmdPool,
           sizeof(overlayVertices),
           vk::BufferUsageFlagBits::eVertexBuffer);
 
@@ -507,7 +427,7 @@ namespace ngfx
       _overlayIndexBuffer = util::FastBuffer(
           c.device,
           c.physicalDevice,
-          _commandPool,
+          c.cmdPool,
           sizeof(overlayIndices),
           vk::BufferUsageFlagBits::eIndexBuffer);
       
@@ -521,7 +441,7 @@ namespace ngfx
       _envVertexBuffer = util::FastBuffer(
           c.device, 
           c.physicalDevice, 
-          _commandPool,
+          c.cmdPool,
           sizeof(testVertices),
           vk::BufferUsageFlagBits::eVertexBuffer);
       _envVertexBuffer.init();
@@ -531,7 +451,7 @@ namespace ngfx
       _envIndexBuffer = util::FastBuffer(
           c.device, 
           c.physicalDevice, 
-          _commandPool,
+          c.cmdPool,
           sizeof(testIndices),
           vk::BufferUsageFlagBits::eIndexBuffer);
       _envIndexBuffer.init();
@@ -541,7 +461,7 @@ namespace ngfx
       _envInstanceBuffer = util::FastBuffer(
           c.device, 
           c.physicalDevice, 
-          _commandPool,
+          c.cmdPool,
           sizeof(testInstances),
           vk::BufferUsageFlagBits::eVertexBuffer);
       _envInstanceBuffer.init();
@@ -597,7 +517,7 @@ namespace ngfx
           vk::DescriptorPoolCreateFlags(),
           10,
           util::array_size(poolSize),
-          poolSize);
+          poolSize); 
       
       c.device.createDescriptorPool
         (&poolInfo, 
@@ -605,33 +525,11 @@ namespace ngfx
          &_descriptorPool);
     }
 
-    void createOverlayDescriptorSetLayout(void)
-    {
-      vk::DescriptorSetLayoutBinding bindings[] = {
-       vk::DescriptorSetLayoutBinding(
-           0,
-           vk::DescriptorType::eCombinedImageSampler,
-           1,
-           vk::ShaderStageFlagBits::eFragment, 
-           nullptr)
-      };
-      
-      vk::DescriptorSetLayoutCreateInfo layoutCI(
-          vk::DescriptorSetLayoutCreateFlags(),
-          util::array_size(bindings),
-          bindings); 
-      
-      c.device.createDescriptorSetLayout
-        (&layoutCI,
-         nullptr,
-         &_descLayouts);
-    }
-
     void createOverlayDescriptorSets(void)
     {
       vk::DescriptorSetAllocateInfo allocInfo(_descriptorPool,
                                               1,
-                                              &_descLayouts);
+                                              &overlay.descLayout);
 
       c.device.allocateDescriptorSets(&allocInfo, &_descriptorSet);
 
