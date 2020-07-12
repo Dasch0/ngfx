@@ -3,6 +3,7 @@
 #include "vulkan/vulkan.hpp"
 #include "context.hpp"
 #include "swap_data.hpp"
+#include "util.hpp"
 
 namespace ngfx
 {
@@ -32,9 +33,60 @@ namespace ngfx
         vk::VertexInputRate::eVertex),
   };
 
- 
-  Overlay::Overlay(Context *c, SwapData *s)
-    : device(&c->device)
+  void Overlay::createDescriptorPool(void)
+  {
+    vk::DescriptorPoolSize poolSize[] = {
+      vk::DescriptorPoolSize(
+          vk::DescriptorType::eCombinedImageSampler,
+          1)
+    };
+
+    vk::DescriptorPoolCreateInfo poolInfo(
+        vk::DescriptorPoolCreateFlags(),
+        1,
+        util::array_size(poolSize),
+        poolSize); 
+    
+    device->createDescriptorPool(
+       &poolInfo, 
+       nullptr, 
+       &descPool);
+  }
+
+  void Overlay::createDescriptorSets(void)
+  {
+    vk::DescriptorSetAllocateInfo allocInfo(descPool,
+                                            1,
+                                            &descLayout);
+
+    device->allocateDescriptorSets(&allocInfo, &descSet);
+
+    vk::DescriptorImageInfo imageInfo(
+        sampler,
+        view,
+        vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    vk::WriteDescriptorSet descWrite[] = { 
+      vk::WriteDescriptorSet(
+          descSet,
+          0,
+          0,
+          1,
+          vk::DescriptorType::eCombinedImageSampler,
+          &imageInfo,
+          nullptr,
+          nullptr)
+    };
+
+    device->updateDescriptorSets(
+        util::array_size(descWrite),
+        descWrite,
+        0,
+        nullptr);
+  }
+
+  Overlay::Overlay(Context *c, SwapData *s, vk::ImageView v)
+    : device(&c->device), view(v)
   {
     // RenderPass
     vk::AttachmentDescription
@@ -173,10 +225,16 @@ namespace ngfx
         &pass,
         &c->pipelineCache,
         &pipeline);
+    
+    createDescriptorPool();
+    createDescriptorSets();
   }
 
   Overlay::~Overlay()
   {
+    device->destroyDescriptorPool(descPool);
+    device->destroyDescriptorSetLayout(descLayout);
+
     for(vk::Framebuffer &frame : frames)
     {
       device->destroyFramebuffer(frame);

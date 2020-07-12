@@ -58,25 +58,135 @@ namespace ngfx
     glm::vec2 offset;
   } const overlayOffset = {{0.5, -0.5}};
 
+  class Camera {
+    public:
+      glm::vec3 pos;
+      glm::float64 pitch, yaw;
+      
+      glm::mat4 view, proj, cam;
+
+      Camera(vk::Extent2D extent) {
+        // Set projection matrix
+        proj = glm::perspective(
+            glm::radians(90.0),
+            (glm::float64) (extent.width / extent.height),
+            0.1,
+            1000.0);
+        
+        // Set initial pos, pitch and yaw
+        jump(glm::vec3(0.0, 0.0, -0.1), glm::half_pi<glm::float64>(), 0);
+        build();
+      }
+
+      void move(glm::vec3 deltaPos, glm::float64 deltaPitch,glm::float64 deltaYaw)
+      {
+        pos += deltaPos;
+        pitch += deltaPitch;
+        yaw += deltaYaw;
+      }
+
+      void jump(glm::vec3 newPos, glm::float64 newPitch, glm::float64 newYaw)
+      {
+        pos = newPos;
+        pitch = newPitch;
+        yaw = newYaw;
+      }
+
+      // Credit to https://www.3dgep.com/understanding-the-view-matrix/
+      // TODO:: Support changes to projection matrix (aspect resize mainly)
+      void build()
+      {
+        glm::float64 cosPitch = glm::cos(pitch);
+        glm::float64 sinPitch = glm::sin(pitch);
+        glm::float64 cosYaw = glm::cos(yaw);
+        glm::float64 sinYaw = glm::sin(yaw);
+        glm::vec3 x = {cosYaw, 0, -sinYaw};
+        glm::vec3 y = {sinYaw * sinPitch, cosPitch, cosYaw * sinPitch };
+        glm::vec3 z = {sinYaw * cosPitch, -sinPitch, cosPitch * cosYaw };
+
+        view = glm::mat4(
+            glm::vec4(x.x, x.y, z.y, 0),
+            glm::vec4(x.y, y.y, z.y, 0),
+            glm::vec4(x.z, y.z, z.z, 0),
+            glm::vec4(-glm::dot(x, pos), -glm::dot(y, pos), -glm::dot(z, pos), 1));
+        
+        cam = proj * view;
+      }
+    };
+
+  // TODO: Implement multiview extension to speed up camera_array rendering
+
   class TestRenderer
   {
   public:
     Context c;
     SwapData swapData;
     Scene scene;
+    CameraArray cameraArray;
     Overlay overlay;
-    CameraArray cam;
+    Camera cam;
 
     TestRenderer()
-      : c(), swapData(&c), scene(&c, &swapData),
-      overlay(&c, &swapData), cam(&c), _currentFrame(0) {}
+        : c(), swapData(&c), scene(&c, &swapData), 
+          cameraArray(&c), overlay(&c, &swapData, cameraArray.fbo.view),
+          cam(swapData.extent), _currentFrame(0) {}
+    
+    // TODO: Move these somewhere better
+    static void key_callback(
+        GLFWwindow* w,
+        int key,
+        int scancode,
+        int action,
+        int mods)
+    {
+      Camera *cam = (Camera *) glfwGetWindowUserPointer(w);
+      glm::float64 delta = .5;
+      glm::float64 theta = .1;
+      if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+      {
+        glfwSetWindowShouldClose(w, GLFW_TRUE);
+      };
+      if (key == GLFW_KEY_UP && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(delta, 0, 0), 0, 0);
+      };
+      if (key == GLFW_KEY_LEFT && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(0, -delta, 0), 0, 0);
+      };
+      if (key == GLFW_KEY_DOWN && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(-delta, 0, 0), 0, 0);
+      };
+      if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(0, delta, 0), 0, 0);
+      };
+      if (key == GLFW_KEY_W && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(0, 0, 0), theta, 0);
+      };
+      if (key == GLFW_KEY_A && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(delta, 0, 0), 0, -theta);
+      };
+      if (key == GLFW_KEY_S && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(delta, 0, 0), -theta, 0);
+      };
+      if (key == GLFW_KEY_D && action == GLFW_PRESS)
+      {
+        cam->move(glm::vec3(delta, 0, 0), 0, theta);
+      };
+
+      cam->build();
+    }
+
 
     void init(void)
     {
       createEnvBuffers(); 
       createOverlayBuffers();
-      createDescriptorPool();
-      createOverlayDescriptorSets();
       buildOffscreenCommandBuffer();
       buildCommandBuffers();
 
@@ -106,15 +216,11 @@ namespace ngfx
     std::vector<vk::CommandBuffer> commandBuffers;
     vk::CommandBuffer offscreenCommandBuffer;
 
-    vk::DescriptorPool _descriptorPool;
-    vk::DescriptorSet _descriptorSet;
-
     util::FastBuffer _overlayVertexBuffer;
     util::FastBuffer _overlayIndexBuffer;
     util::FastBuffer _envVertexBuffer;
     util::FastBuffer _envIndexBuffer;
     util::FastBuffer _envInstanceBuffer;
-    glm::mat4 _envMvp;
 
     util::SemaphoreSet _semaphores[ngfx::kMaxFramesInFlight];
     vk::Fence _inFlightFences[ngfx::kMaxFramesInFlight];
@@ -125,8 +231,12 @@ namespace ngfx
       double lastTime = glfwGetTime();
       int nbFrames = 0;
       drawOffscreenFrame();
-      while (!glfwWindowShouldClose(c.window)) {
 
+      // TODO: Move this elsewhere
+      glfwSetWindowUserPointer(c.window, &cam);
+      glfwSetKeyCallback(c.window, key_callback);
+      while (!glfwWindowShouldClose(c.window)) {
+        
         // Measure speed
         double currentTime = glfwGetTime();
         nbFrames++;
@@ -136,9 +246,11 @@ namespace ngfx
           nbFrames = 0;
           lastTime += 1.0;
         }
+        glfwPollEvents();
         drawFrame();
       }
       c.device.waitIdle();
+      glfwTerminate();
     }
 
     void cleanup(void)
@@ -146,9 +258,6 @@ namespace ngfx
       // TODO: Fix destructor ordering/dependencies so this doesn't happen
       _overlayVertexBuffer.~FastBuffer();
       _overlayIndexBuffer.~FastBuffer();
-
-      c.device.destroyDescriptorPool(_descriptorPool);
-      c.device.destroyDescriptorSetLayout(overlay.descLayout);
 
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
@@ -224,7 +333,6 @@ namespace ngfx
     
     void buildOffscreenCommandBuffer(void)
     {
-      updateTestMvp(nullptr);
       vk::CommandBuffer *cmd = &offscreenCommandBuffer;
       vk::CommandBufferAllocateInfo allocInfo(
           c.cmdPool,
@@ -250,21 +358,17 @@ namespace ngfx
       cmd->begin(beginInfo);
 
       vk::RenderPassBeginInfo envPassInfo(
-          cam.pass,
-          cam.fbo.frame,
-          vk::Rect2D(
-            vk::Offset2D(0, 0),
-            cam.fbo.extent),
-          1,
+          cameraArray.pass, cameraArray.fbo.frame,
+          vk::Rect2D(vk::Offset2D(0, 0), cameraArray.fbo.extent), 1,
           &clearValue);
 
       cmd->beginRenderPass(envPassInfo,
           vk::SubpassContents::eInline);
 
-      cmd->pushConstants(cam.layout, vk::ShaderStageFlagBits::eVertex, 0,
-                         sizeof(_envMvp), (void *)&_envMvp);
+      cmd->pushConstants(cameraArray.layout, vk::ShaderStageFlagBits::eVertex,
+                         0, sizeof(cam.cam), (void *)&cam.cam);
 
-      cmd->bindPipeline(vk::PipelineBindPoint::eGraphics, cam.pipeline);
+      cmd->bindPipeline(vk::PipelineBindPoint::eGraphics, cameraArray.pipeline);
 
       cmd->bindVertexBuffers(
           0,
@@ -343,8 +447,8 @@ namespace ngfx
             scene.layout,
             vk::ShaderStageFlagBits::eVertex,
             0,
-            sizeof(_envMvp),
-            (void *) &_envMvp);
+            sizeof(cam.cam),
+            (void *) &cam.cam);
         commandBuffers[i].bindPipeline(
             vk::PipelineBindPoint::eGraphics,
             scene.pipeline);
@@ -396,7 +500,7 @@ namespace ngfx
             overlay.layout,
             0,
             1,
-            &_descriptorSet,
+            &overlay.descSet,
             0,
             nullptr);
         commandBuffers[i].drawIndexed(
@@ -467,92 +571,8 @@ namespace ngfx
       _envInstanceBuffer.init();
       _envInstanceBuffer.stage((void *) testInstances);
       _envInstanceBuffer.blockingCopy(c.graphicsQueue);
-    }
-    
-    // TODO: Fix to work with push constants and keyboard input
-    void updateTestMvp(vk::Semaphore waitSemaphore)
-    {
-      static auto startTime = 
-        std::chrono::high_resolution_clock::now();
-      auto currentTime =
-        std::chrono::high_resolution_clock::now();
-      float time =
-        std::chrono::duration<float, std::chrono::seconds::period>
-          (currentTime - startTime).count();
-      
-      util::Mvp mvp;
-      mvp.model = glm::rotate(
-          glm::mat4(1.0f),
-          time * glm::radians(90.0f),
-          glm::vec3(0.0f, 0.0f, 1.0f));
-      
-      mvp.view = glm::lookAt(
-          glm::vec3(2.0f, 2.0f, 10.0f),
-          glm::vec3(0.0f, 0.0f, 0.0f),
-          glm::vec3(0.0f, 0.0f, 1.0f));
-      
-      mvp.proj = glm::perspective(
-          glm::radians(90.0f),
-          swapData.extent.width
-          / (float) swapData.extent.height,
-          0.1f,
-          100.0f);
-      
-      mvp.proj[1][1] *= -1;
-
-      _envMvp = mvp.proj * mvp.view * mvp.model;
-    }
-
-    // TODO: support variable number of descriptor sets
-    // TODO: optimize maxsets and pool sizes, for now setting & forgetting
-    void createDescriptorPool(void)
-    {
-      vk::DescriptorPoolSize poolSize[] = {
-        vk::DescriptorPoolSize(
-            vk::DescriptorType::eCombinedImageSampler,
-            1),
-      };
-
-      vk::DescriptorPoolCreateInfo poolInfo(
-          vk::DescriptorPoolCreateFlags(),
-          10,
-          util::array_size(poolSize),
-          poolSize); 
-      
-      c.device.createDescriptorPool
-        (&poolInfo, 
-         nullptr, 
-         &_descriptorPool);
-    }
-
-    void createOverlayDescriptorSets(void)
-    {
-      vk::DescriptorSetAllocateInfo allocInfo(_descriptorPool,
-                                              1,
-                                              &overlay.descLayout);
-
-      c.device.allocateDescriptorSets(&allocInfo, &_descriptorSet);
-
-      vk::DescriptorImageInfo imageInfo(overlay.sampler,
-                                        cam.fbo.view,
-                                        vk::ImageLayout::eShaderReadOnlyOptimal);
-
-      vk::WriteDescriptorSet descWrite[] = { 
-        vk::WriteDescriptorSet(_descriptorSet,
-                               0,
-                               0,
-                               1,
-                               vk::DescriptorType::eCombinedImageSampler,
-                               &imageInfo,
-                               nullptr,
-                               nullptr)
-      };
-      c.device.updateDescriptorSets(util::array_size(descWrite),
-                                    descWrite,
-                                    0,
-                                    nullptr);
-    }
+    }    
   };
 }
 
-#endif //NGFX_TESTRENDERER_H
+#endif // NGFX_TESTRENDERER_H
