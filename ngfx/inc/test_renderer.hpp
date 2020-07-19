@@ -92,35 +92,35 @@ namespace ngfx
       };
       if (key == GLFW_KEY_UP)
       {
-        cam->move(glm::vec3(0, delta, 0), 0, 0);
+        cam->move(glm::vec3(0, delta, 0), 0, 0, 0);
       };
       if (key == GLFW_KEY_LEFT)
       {
-        cam->move(glm::vec3(-delta, 0, 0), 0, 0);
+        cam->move(glm::vec3(-delta, 0, 0), 0, 0, 0);
       };
       if (key == GLFW_KEY_DOWN)
       {
-        cam->move(glm::vec3(0, -delta, 0), 0, 0);
+        cam->move(glm::vec3(0, -delta, 0), 0, 0, 0);
       };
       if (key == GLFW_KEY_RIGHT)
       {
-        cam->move(glm::vec3(delta, 0, 0), 0, 0);
+        cam->move(glm::vec3(delta, 0, 0), 0, 0, 0);
       };
       if (key == GLFW_KEY_W)
       {
-        cam->move(glm::vec3(0, 0, 0), theta, 0);
+        cam->move(glm::vec3(0, 0, 0), theta, 0, 0);
       };
       if (key == GLFW_KEY_A)
       {
-        cam->move(glm::vec3(0, 0, 0), 0, -theta);
+        cam->move(glm::vec3(0, 0, 0), 0, -theta, 0);
       };
       if (key == GLFW_KEY_S)
       {
-        cam->move(glm::vec3(0, 0, 0), -theta, 0);
+        cam->move(glm::vec3(0, 0, 0), -theta, 0, 0);
       };
       if (key == GLFW_KEY_D)
       {
-        cam->move(glm::vec3(0, 0, 0), 0, theta);
+        cam->move(glm::vec3(0, 0, 0), 0, theta, 0);
       };
       cam->build();
       cameraArray->camBuffer.stage(&cam->cam);
