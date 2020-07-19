@@ -43,17 +43,49 @@ namespace ngfx
   };
 
   CameraArray::CameraArray(Context *c)
-    : device(&c->device)
+    : w(256), h(256), device(&c->device), cam(vk::Extent2D(w, h)), 
+      camBuffer(
+          &c->device,
+          &c->physicalDevice,
+          &c->cmdPool,
+          sizeof(cam.cam),
+          vk::BufferUsageFlagBits::eUniformBuffer)
   {
     buildRenderPass();
     buildFbo(c);
-    util::buildLayout(
-        device,
-        0,
-        nullptr,
-        sizeof(mvp),
-        &layout);
+
+    //Descriptors & buffers
+    vk::DescriptorSetLayoutBinding bindings[] = {
+      vk::DescriptorSetLayoutBinding(
+         0,
+         vk::DescriptorType::eUniformBuffer,
+         1,
+         vk::ShaderStageFlagBits::eVertex, 
+         nullptr)
+    };
     
+    vk::DescriptorSetLayoutCreateInfo layoutCI(
+        vk::DescriptorSetLayoutCreateFlags(),
+        util::array_size(bindings),
+        bindings); 
+    
+    device->createDescriptorSetLayout(
+        &layoutCI,
+        nullptr,
+        &descLayout);
+
+    vk::PipelineLayoutCreateInfo pipelineLayoutCI(
+        vk::PipelineLayoutCreateFlags(),
+        1,
+        &descLayout,
+        0,
+        nullptr);
+
+    device->createPipelineLayout(
+        &pipelineLayoutCI,
+        nullptr,
+        &layout);
+
     util::buildPipeline(
         &c->device,
         fbo.extent,
@@ -68,6 +100,15 @@ namespace ngfx
         &pass,
         &c->pipelineCache,
         &pipeline);
+
+    camBuffer.init();
+    createDescriptorPool();
+    createDescriptorSets();
+    camBuffer.stage(&cam.cam);
+
+    // TODO: Fix hack that stores queue here, prefer to restructure fastbuffer
+    q = &c->graphicsQueue;
+    camBuffer.blockingCopy(c->graphicsQueue);
   }
 
   void CameraArray::buildRenderPass()
@@ -125,8 +166,6 @@ namespace ngfx
 
   void CameraArray::buildFbo(Context *c)
   {
-    uint w = 256;
-    uint h = 256;
     vk::Image *i = &fbo.image;
     vk::DeviceMemory *m = &fbo.mem;
     vk::ImageView *v = &fbo.view;
@@ -196,6 +235,57 @@ namespace ngfx
         f);
   }
 
+  void CameraArray::createDescriptorPool(void) {
+    vk::DescriptorPoolSize poolSize[] = {
+      vk::DescriptorPoolSize(
+          vk::DescriptorType::eUniformBuffer,
+          1)
+    };
+
+    vk::DescriptorPoolCreateInfo poolInfo(
+        vk::DescriptorPoolCreateFlags(),
+        1,
+        util::array_size(poolSize),
+        poolSize); 
+    
+    device->createDescriptorPool(
+       &poolInfo, 
+       nullptr, 
+       &descPool);
+  }
+
+  void CameraArray::createDescriptorSets(void)
+  {
+    vk::DescriptorSetAllocateInfo allocInfo(descPool,
+                                            1,
+                                            &descLayout);
+
+    device->allocateDescriptorSets(&allocInfo, &descSet);
+
+    vk::DescriptorBufferInfo buffInfo(
+        camBuffer.localBuffer,
+        0,
+        sizeof(cam.cam));
+    
+    vk::WriteDescriptorSet descWrite[] = { 
+      vk::WriteDescriptorSet(
+          descSet,
+          0,
+          0,
+          1,
+          vk::DescriptorType::eUniformBuffer,
+          nullptr,
+          &buffInfo,
+          nullptr)
+    };
+
+    device->updateDescriptorSets(
+        util::array_size(descWrite),
+        descWrite,
+        0,
+        nullptr); 
+  }
+  
   CameraArray::~CameraArray()
   {
     device->destroyRenderPass(pass);

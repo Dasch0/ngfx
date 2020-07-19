@@ -76,9 +76,9 @@ namespace ngfx
       FastBuffer(void);
 
       FastBuffer(
-          vk::Device &dev,
-          vk::PhysicalDevice &phys,
-          vk::CommandPool &pool,
+          vk::Device *dev,
+          vk::PhysicalDevice *physDev,
+          vk::CommandPool *cmdPool,
           vk::DeviceSize size,
           vk::BufferUsageFlags usage);
 

@@ -23,6 +23,7 @@ set(
     "inc/scene.hpp"
     "inc/overlay.hpp"
     "inc/camera_array.hpp"
+    "inc/camera.hpp"
 )
 
 add_executable(ngfx ${SOURCES} ${HEADERS})

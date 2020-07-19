@@ -5,6 +5,7 @@
 #include "context.hpp"
 #include "swap_data.hpp"
 #include "util.hpp"
+#include "camera.hpp"
 
 namespace ngfx
 {
@@ -17,13 +18,24 @@ namespace ngfx
     vk::PipelineLayout layout;
     vk::Pipeline pipeline;
     util::Mvp mvp;
+    
+    Camera cam;
+    util::FastBuffer camBuffer;
+
+    vk::DescriptorSetLayout descLayout;
+    vk::DescriptorPool descPool;
+    vk::DescriptorSet descSet;
 
     // Pointer for device held for use in destructor only
     // Pointer must stay valid for lifetime
     vk::Device *device;
-
+    vk::Queue *q;
     Scene(Context *c, SwapData *s);
     ~Scene();
+
+    private:
+      void createDescriptorPool(void);
+      void createDescriptorSets(void);
   };
 }
 

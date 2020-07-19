@@ -87,7 +87,7 @@ namespace ngfx
       vk::PipelineInputAssemblyStateCreateInfo inputAssembly(
           vk::PipelineInputAssemblyStateCreateFlags(),
           overlay ? vk::PrimitiveTopology::eTriangleList
-          : vk::PrimitiveTopology::eLineStrip,
+          : vk::PrimitiveTopology::eLineList,
           false);
 
       vk::Viewport viewport(

@@ -22,12 +22,12 @@ namespace ngfx
 
     FastBuffer::FastBuffer(void) : valid(false) {}
 
-    FastBuffer::FastBuffer(vk::Device &dev,
-                           vk::PhysicalDevice &phys,
-                           vk::CommandPool &pool,
+    FastBuffer::FastBuffer(vk::Device *dev,
+                           vk::PhysicalDevice *physDev,
+                           vk::CommandPool *cmdPool,
                            vk::DeviceSize size,
                            vk::BufferUsageFlags usage)
-      : valid(false), device(&dev), phys(&phys), pool(&pool), size(size),
+      : valid(false), device(dev), phys(physDev), pool(cmdPool), size(size),
       usage(usage)
       {}
 

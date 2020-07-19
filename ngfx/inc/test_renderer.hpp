@@ -27,7 +27,7 @@ namespace ngfx
   };
 
   const uint16_t testIndices[] = {
-    0, 1, 2, 0
+    0, 1, 1, 2, 2, 0
   };
 
   const util::Instance testInstances[] = {
@@ -58,64 +58,7 @@ namespace ngfx
     glm::vec2 offset;
   } const overlayOffset = {{0.5, -0.5}};
 
-  class Camera {
-    public:
-      glm::vec3 pos;
-      glm::float64 pitch, yaw;
-      
-      glm::mat4 view, proj, cam;
-
-      Camera(vk::Extent2D extent) {
-        // Set projection matrix
-        proj = glm::perspective(
-            glm::radians(90.0),
-            (glm::float64) (extent.width / extent.height),
-            0.1,
-            1000.0);
-        
-        // Set initial pos, pitch and yaw
-        jump(glm::vec3(0.0, 0.0, -0.1), glm::half_pi<glm::float64>(), 0);
-        build();
-      }
-
-      void move(glm::vec3 deltaPos, glm::float64 deltaPitch,glm::float64 deltaYaw)
-      {
-        pos += deltaPos;
-        pitch += deltaPitch;
-        yaw += deltaYaw;
-      }
-
-      void jump(glm::vec3 newPos, glm::float64 newPitch, glm::float64 newYaw)
-      {
-        pos = newPos;
-        pitch = newPitch;
-        yaw = newYaw;
-      }
-
-      // Credit to https://www.3dgep.com/understanding-the-view-matrix/
-      // TODO:: Support changes to projection matrix (aspect resize mainly)
-      void build()
-      {
-        glm::float64 cosPitch = glm::cos(pitch);
-        glm::float64 sinPitch = glm::sin(pitch);
-        glm::float64 cosYaw = glm::cos(yaw);
-        glm::float64 sinYaw = glm::sin(yaw);
-        glm::vec3 x = {cosYaw, 0, -sinYaw};
-        glm::vec3 y = {sinYaw * sinPitch, cosPitch, cosYaw * sinPitch };
-        glm::vec3 z = {sinYaw * cosPitch, -sinPitch, cosPitch * cosYaw };
-
-        view = glm::mat4(
-            glm::vec4(x.x, x.y, z.y, 0),
-            glm::vec4(x.y, y.y, z.y, 0),
-            glm::vec4(x.z, y.z, z.z, 0),
-            glm::vec4(-glm::dot(x, pos), -glm::dot(y, pos), -glm::dot(z, pos), 1));
-        
-        cam = proj * view;
-      }
-    };
-
   // TODO: Implement multiview extension to speed up camera_array rendering
-
   class TestRenderer
   {
   public:
@@ -139,47 +82,49 @@ namespace ngfx
         int action,
         int mods)
     {
-      Camera *cam = (Camera *) glfwGetWindowUserPointer(w);
-      glm::float64 delta = .5;
+      CameraArray *cameraArray = (CameraArray *) glfwGetWindowUserPointer(w);
+      Camera* cam = &cameraArray->cam;
+      glm::float64 delta = .1;
       glm::float64 theta = .1;
-      if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+      if (key == GLFW_KEY_ESCAPE)
       {
         glfwSetWindowShouldClose(w, GLFW_TRUE);
       };
-      if (key == GLFW_KEY_UP && action == GLFW_PRESS)
-      {
-        cam->move(glm::vec3(delta, 0, 0), 0, 0);
-      };
-      if (key == GLFW_KEY_LEFT && action == GLFW_PRESS)
-      {
-        cam->move(glm::vec3(0, -delta, 0), 0, 0);
-      };
-      if (key == GLFW_KEY_DOWN && action == GLFW_PRESS)
-      {
-        cam->move(glm::vec3(-delta, 0, 0), 0, 0);
-      };
-      if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS)
+      if (key == GLFW_KEY_UP)
       {
         cam->move(glm::vec3(0, delta, 0), 0, 0);
       };
-      if (key == GLFW_KEY_W && action == GLFW_PRESS)
+      if (key == GLFW_KEY_LEFT)
+      {
+        cam->move(glm::vec3(-delta, 0, 0), 0, 0);
+      };
+      if (key == GLFW_KEY_DOWN)
+      {
+        cam->move(glm::vec3(0, -delta, 0), 0, 0);
+      };
+      if (key == GLFW_KEY_RIGHT)
+      {
+        cam->move(glm::vec3(delta, 0, 0), 0, 0);
+      };
+      if (key == GLFW_KEY_W)
       {
         cam->move(glm::vec3(0, 0, 0), theta, 0);
       };
-      if (key == GLFW_KEY_A && action == GLFW_PRESS)
+      if (key == GLFW_KEY_A)
       {
-        cam->move(glm::vec3(delta, 0, 0), 0, -theta);
+        cam->move(glm::vec3(0, 0, 0), 0, -theta);
       };
-      if (key == GLFW_KEY_S && action == GLFW_PRESS)
+      if (key == GLFW_KEY_S)
       {
-        cam->move(glm::vec3(delta, 0, 0), -theta, 0);
+        cam->move(glm::vec3(0, 0, 0), -theta, 0);
       };
-      if (key == GLFW_KEY_D && action == GLFW_PRESS)
+      if (key == GLFW_KEY_D)
       {
-        cam->move(glm::vec3(delta, 0, 0), 0, theta);
+        cam->move(glm::vec3(0, 0, 0), 0, theta);
       };
-
       cam->build();
+      cameraArray->camBuffer.stage(&cam->cam);
+      cameraArray->camBuffer.blockingCopy(*cameraArray->q);
     }
 
 
@@ -233,7 +178,7 @@ namespace ngfx
       drawOffscreenFrame();
 
       // TODO: Move this elsewhere
-      glfwSetWindowUserPointer(c.window, &cam);
+      glfwSetWindowUserPointer(c.window, &cameraArray);
       glfwSetKeyCallback(c.window, key_callback);
       while (!glfwWindowShouldClose(c.window)) {
         
@@ -365,9 +310,6 @@ namespace ngfx
       cmd->beginRenderPass(envPassInfo,
           vk::SubpassContents::eInline);
 
-      cmd->pushConstants(cameraArray.layout, vk::ShaderStageFlagBits::eVertex,
-                         0, sizeof(cam.cam), (void *)&cam.cam);
-
       cmd->bindPipeline(vk::PipelineBindPoint::eGraphics, cameraArray.pipeline);
 
       cmd->bindVertexBuffers(
@@ -386,6 +328,17 @@ namespace ngfx
           _envIndexBuffer.localBuffer,
           0,
           vk::IndexType::eUint16);
+
+
+      cmd->bindDescriptorSets(
+          vk::PipelineBindPoint::eGraphics,
+          cameraArray.layout,
+          0,
+          1,
+          &cameraArray.descSet,
+          0,
+          nullptr);
+      
       cmd->drawIndexed(
           util::array_size(testIndices),
           util::array_size(testInstances),
@@ -443,12 +396,6 @@ namespace ngfx
         commandBuffers[i].beginRenderPass(
             envPassInfo,
             vk::SubpassContents::eInline);
-        commandBuffers[i].pushConstants(
-            scene.layout,
-            vk::ShaderStageFlagBits::eVertex,
-            0,
-            sizeof(cam.cam),
-            (void *) &cam.cam);
         commandBuffers[i].bindPipeline(
             vk::PipelineBindPoint::eGraphics,
             scene.pipeline);
@@ -466,6 +413,14 @@ namespace ngfx
             _envIndexBuffer.localBuffer,
             0,
             vk::IndexType::eUint16);
+        commandBuffers[i].bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics,
+            cameraArray.layout,
+            0,
+            1,
+            &cameraArray.descSet,
+            0,
+            nullptr);
         commandBuffers[i].drawIndexed(
             util::array_size(testIndices),
             util::array_size(testInstances),
@@ -518,9 +473,9 @@ namespace ngfx
     void createOverlayBuffers(void)
     {
       _overlayVertexBuffer = util::FastBuffer(
-          c.device,
-          c.physicalDevice,
-          c.cmdPool,
+          &c.device,
+          &c.physicalDevice,
+          &c.cmdPool,
           sizeof(overlayVertices),
           vk::BufferUsageFlagBits::eVertexBuffer);
 
@@ -529,9 +484,9 @@ namespace ngfx
       _overlayVertexBuffer.copy(c.graphicsQueue);
 
       _overlayIndexBuffer = util::FastBuffer(
-          c.device,
-          c.physicalDevice,
-          c.cmdPool,
+          &c.device,
+          &c.physicalDevice,
+          &c.cmdPool,
           sizeof(overlayIndices),
           vk::BufferUsageFlagBits::eIndexBuffer);
       
@@ -543,9 +498,9 @@ namespace ngfx
     void createEnvBuffers(void)
     {
       _envVertexBuffer = util::FastBuffer(
-          c.device, 
-          c.physicalDevice, 
-          c.cmdPool,
+          &c.device, 
+          &c.physicalDevice, 
+          &c.cmdPool,
           sizeof(testVertices),
           vk::BufferUsageFlagBits::eVertexBuffer);
       _envVertexBuffer.init();
@@ -553,9 +508,9 @@ namespace ngfx
       _envVertexBuffer.copy(c.graphicsQueue);
       
       _envIndexBuffer = util::FastBuffer(
-          c.device, 
-          c.physicalDevice, 
-          c.cmdPool,
+          &c.device, 
+          &c.physicalDevice, 
+          &c.cmdPool,
           sizeof(testIndices),
           vk::BufferUsageFlagBits::eIndexBuffer);
       _envIndexBuffer.init();
@@ -563,9 +518,9 @@ namespace ngfx
       _envIndexBuffer.copy(c.graphicsQueue);
 
       _envInstanceBuffer = util::FastBuffer(
-          c.device, 
-          c.physicalDevice, 
-          c.cmdPool,
+          &c.device, 
+          &c.physicalDevice, 
+          &c.cmdPool,
           sizeof(testInstances),
           vk::BufferUsageFlagBits::eVertexBuffer);
       _envInstanceBuffer.init();
