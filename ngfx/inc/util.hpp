@@ -179,6 +179,8 @@ namespace ngfx
         vk::PhysicalDevice &phys,
         uint32_t typeFilter,
         vk::MemoryPropertyFlags requiredProps);
+
+    vk::SampleCountFlags getMaxUsableSampleCount(vk::PhysicalDevice *d);
   }
 }
 #endif // UTIL_H

@@ -568,5 +568,15 @@ namespace ngfx
       }
       throw std::runtime_error("failed to find suitable memory type!");
     }
+    
+    vk::SampleCountFlags getMaxUsableSampleCount(vk::PhysicalDevice *d) {
+      vk::PhysicalDeviceProperties prop = d->getProperties();
+
+      vk::SampleCountFlags counts =
+        prop.limits.framebufferColorSampleCounts 
+        & prop.limits.framebufferDepthSampleCounts;
+
+      return vk::SampleCountFlags(counts);
+    }
   }
 }
