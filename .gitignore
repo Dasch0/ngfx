@@ -33,8 +33,6 @@ build/
 *.out
 *.app
 
-*.autosave
-
 #Cmake
 CMakeFiles/
 *.txt.user
@@ -44,3 +42,6 @@ CMakeFiles/
 
 #autosaves
 *.autosave
+
+#autocomplete
+.clangd/
