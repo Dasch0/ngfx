@@ -3,7 +3,6 @@
 
 #include "ngfx.hpp"
 #include "config.hpp"
-#include "context.hpp"
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_core.h>
 
@@ -54,30 +53,6 @@ namespace ngfx
       glm::mat4 model;
       glm::mat4 view;
       glm::mat4 proj;
-    };
-
-    // Abstracts buffer and transfer semantics for a fast uniform/vertex buffer
-    // that is easy to work with on the CPU side
-    // TODO: batch buffer allocations
-    template <typename T, size_t N>
-    class FastBuffer
-    {
-    public:
-      Context *c;
-      vk::BufferUsageFlags usage;
-      vk::Buffer stagingBuffer;
-      vk::DeviceMemory stagingMemory;
-      vk::Buffer localBuffer;
-      vk::DeviceMemory localMemory;
-      vk::CommandBuffer commandBuffer;
-      size_t count = N;
-      T data[N];
-
-      FastBuffer(Context *context, vk::BufferUsageFlags usage);
-
-      void copy(void);
-      void blockingCopy(void);
-      ~FastBuffer(void);
     };
 
     struct Fbo

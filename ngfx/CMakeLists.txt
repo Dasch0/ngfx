@@ -9,6 +9,7 @@ set(
     "src/scene.cpp"
     "src/overlay.cpp"
     "src/camera_array.cpp"
+    "src/fast_buffer.cpp"
 )
 
 set(
@@ -24,6 +25,7 @@ set(
     "inc/overlay.hpp"
     "inc/camera_array.hpp"
     "inc/camera.hpp"
+    "inc/fast_buffer.hpp"
 )
 
 add_executable(ngfx ${SOURCES} ${HEADERS})

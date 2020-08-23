@@ -2,19 +2,19 @@
 #define NGFX_MESH_TABLE
 
 #include "util.hpp"
-
+#include "fast_buffer.hpp"
+#include <bits/stdint-uintn.h>
+ 
 namespace ngfx
 {
-  
+  template<size_t CNT, size_t SZ>
   struct MeshTable
   {
-    static const uint32_t kCount = 0;
-    static const uint32_t kSize = 12; 
-    util::Vertex mesh[kSize];
-    util::Indices indices[kSize];
-    util::Instance instances[kCount];
-  }
-
+    FastBuffer<util::Vertex, SZ> mesh;
+    FastBuffer<uint16_t, SZ> indices;
+    FastBuffer<util::Instance, CNT> instances;
+    
+  };
 }
 
 

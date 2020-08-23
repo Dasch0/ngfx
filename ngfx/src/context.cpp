@@ -41,8 +41,7 @@ namespace ngfx
     util::querySwapchainSupport(&physicalDevice, &surface, &swapInfo);
 
     // Defining a single pipelineCache to be shared for the whole context
-    // According to Vendors (Nvidia do's & dont's) this is recommended 
-    
+    // According to vendor (Nvidia do's & dont's) this is recommended 
     vk::PipelineCacheCreateInfo cacheCI(
         vk::PipelineCacheCreateFlags(),
         0,
