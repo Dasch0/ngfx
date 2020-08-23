@@ -20,121 +20,122 @@ namespace ngfx
         && transferFamily.has_value();
     }
 
-    FastBuffer::FastBuffer(void) : valid(false) {}
-
-    FastBuffer::FastBuffer(vk::Device *dev,
-                           vk::PhysicalDevice *physDev,
-                           vk::CommandPool *cmdPool,
-                           vk::DeviceSize size,
-                           vk::BufferUsageFlags usage)
-      : valid(false), device(dev), phys(physDev), pool(cmdPool), size(size),
-      usage(usage)
-      {}
-
-    void FastBuffer::init(void)
+    FastBuffer::FastBuffer(Context *context, vk::BufferUsageFlags usage)
+      : c(context), usage(usage)
     {
-      vk::BufferCreateInfo stagingCI(vk::BufferCreateFlagBits(),
-                                    size,
-                                    vk::BufferUsageFlagBits::eTransferSrc,
-                                    // TODO: support concurrent
-                                    vk::SharingMode::eExclusive,
-                                    0,
-                                    nullptr);
-      device->createBuffer(&stagingCI,
-                           nullptr,
-                           &stagingBuffer);
 
-      vk::BufferCreateInfo localCI(vk::BufferCreateFlagBits(),
-                                    size,
-                                    vk::BufferUsageFlagBits::eTransferDst
-                                    | usage,
-                                    // TODO: support concurrent
-                                    vk::SharingMode::eExclusive,
-                                    0,
-                                    nullptr);
-      device->createBuffer(&localCI,
-                           nullptr,
-                           &localBuffer);
+      // Create Buffers
+      vk::BufferCreateInfo stagingCI(
+        vk::BufferCreateFlagBits(),
+        util::array_size(data),
+        vk::BufferUsageFlagBits::eTransferSrc,
+        // TODO: support concurrent
+        vk::SharingMode::eExclusive,
+        0,
+        nullptr);
+      
+      c->device.createBuffer(
+        &stagingCI,
+        nullptr,
+        &stagingBuffer);
+
+      vk::BufferCreateInfo localCI(
+        vk::BufferCreateFlagBits(),
+        util::array_size(data),
+        vk::BufferUsageFlagBits::eTransferDst
+        | usage,
+        // TODO: support concurrent
+        vk::SharingMode::eExclusive,
+        0,
+        nullptr);
+      
+      c->device.createBuffer(
+         &localCI,
+         nullptr,
+         &localBuffer);
 
       vk::MemoryRequirements stagingReqs =
-          device->getBufferMemoryRequirements(stagingBuffer);
+          c->device->getBufferMemoryRequirements(stagingBuffer);
       vk::MemoryRequirements localReqs =
-          device->getBufferMemoryRequirements(localBuffer);
+          c->device->getBufferMemoryRequirements(localBuffer);
 
-      uint32_t stagingIndex =
-          util::findMemoryType(*phys,
-                               stagingReqs.memoryTypeBits,
-                               vk::MemoryPropertyFlagBits::eHostVisible
-                               | vk::MemoryPropertyFlagBits::eHostCoherent
-                               | vk::MemoryPropertyFlagBits::eHostCached);
-      uint32_t localIndex =
-          util::findMemoryType(*phys,
-                               localReqs.memoryTypeBits,
-                               vk::MemoryPropertyFlagBits::eDeviceLocal);
+      uint32_t stagingIndex = util::findMemoryType(
+        &c->physicalDevice,
+        stagingReqs.memoryTypeBits,
+        vk::MemoryPropertyFlagBits::eHostVisible
+        | vk::MemoryPropertyFlagBits::eHostCoherent
+        | vk::MemoryPropertyFlagBits::eHostCached);
+      
+      uint32_t localIndex = util::findMemoryType(
+        &c->physicalDevice,
+        localReqs.memoryTypeBits,
+        vk::MemoryPropertyFlagBits::eDeviceLocal);
 
+      // Allocate Buffers
       vk::MemoryAllocateInfo stagingAllocInfo(stagingReqs.size, stagingIndex);
-      device->allocateMemory(&stagingAllocInfo, nullptr, &stagingMemory);
-      device->bindBufferMemory(stagingBuffer, stagingMemory, 0);
+      c->device.allocateMemory(&stagingAllocInfo, nullptr, &stagingMemory);
+      c->device.bindBufferMemory(stagingBuffer, stagingMemory, 0);
       vk::MemoryAllocateInfo localAllocInfo(localReqs.size, localIndex);
-      device->allocateMemory(&stagingAllocInfo, nullptr, &localMemory);
-      device->bindBufferMemory(localBuffer, localMemory, 0);
+      c->device.allocateMemory(&stagingAllocInfo, nullptr, &localMemory);
+      c->device.bindBufferMemory(localBuffer, localMemory, 0);
 
       // Create and record transfer command buffer
-      vk::CommandBufferAllocateInfo allocInfo(*pool,
-                                              vk::CommandBufferLevel::ePrimary,
-                                              1);
-      device->allocateCommandBuffers(&allocInfo, &commandBuffer);
+      vk::CommandBufferAllocateInfo allocInfo(
+        c->device.cmdPool,
+        vk::CommandBufferLevel::ePrimary,
+        1);
+      c->device.allocateCommandBuffers(&allocInfo, &commandBuffer);
 
-      vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlags(),
-                                           nullptr);
+      vk::CommandBufferBeginInfo beginInfo(
+        vk::CommandBufferUsageFlags(),
+        nullptr);
+      
       commandBuffer.begin(beginInfo);
-      vk::BufferCopy copyRegion(0, 0, size);
-      commandBuffer.copyBuffer(stagingBuffer,
-                               localBuffer,
-                               1,
-                               (const vk::BufferCopy *) &copyRegion);
+      vk::BufferCopy copyRegion(0, 0, util::array_size(data));
+      
+      commandBuffer.copyBuffer(
+        stagingBuffer,
+        localBuffer,
+        1,
+        (const vk::BufferCopy *) &copyRegion);
+      
       commandBuffer.end();
-
+      
       // Map memory
-      device->mapMemory(stagingMemory, 0, size, vk::MemoryMapFlags(), &_handle);
-      valid = true;
-    }
-
-    void FastBuffer::stage(void* data)
-    {
-      assert(valid);
-      memcpy(_handle, data, size);
+      device->mapMemory(
+        stagingMemory,
+	0,
+	util::array_size(data),
+	vk::MemoryMapFlags(),
+	data);
     }
 
     // TODO: add fences for external sync
-    void FastBuffer::copy(vk::Queue q)
+    void FastBuffer::copy(void)
     {
-      assert(valid);
       vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
-      q.submit(1, &submitInfo, vk::Fence());
+      c->graphicsQueue.submit(1, &submitInfo, vk::Fence());
     }
 
-    void FastBuffer::blockingCopy(vk::Queue q)
+    void FastBuffer::blockingCopy(void)
     {
-      assert(valid);
       vk::SubmitInfo submitInfo(0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr);
-      q.submit(1, &submitInfo, vk::Fence());
-      q.waitIdle();
+      c->graphicsQueue.submit(1, &submitInfo, vk::Fence());
+      c->graphicsQueue.waitIdle();
     }
 
     FastBuffer::~FastBuffer(void)
     {
-      if (valid)
-      {
-        device->unmapMemory(stagingMemory);
-        device->freeCommandBuffers(*pool,
-                                   1,
-                                   (const vk::CommandBuffer *)&commandBuffer);
-        device->freeMemory(stagingMemory);
-        device->freeMemory(localMemory);
-        device->destroyBuffer(stagingBuffer);
-        device->destroyBuffer(localBuffer);
-      }
+      device->unmapMemory(stagingMemory);
+      device->freeCommandBuffers(
+          *pool,
+          1,
+          (const vk::CommandBuffer *)&commandBuffer);
+      
+      device->freeMemory(stagingMemory);
+      device->freeMemory(localMemory);
+      device->destroyBuffer(stagingBuffer);
+      device->destroyBuffer(localBuffer);
     }
 
     std::vector<const char*> getRequiredExtensions(bool debug)
