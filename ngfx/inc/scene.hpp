@@ -6,6 +6,7 @@
 #include "swap_data.hpp"
 #include "util.hpp"
 #include "camera.hpp"
+#include "fast_buffer.hpp"
 
 namespace ngfx
 {
@@ -19,8 +20,7 @@ namespace ngfx
     vk::Pipeline pipeline;
     util::Mvp mvp;
     
-    Camera cam;
-    util::FastBuffer camBuffer;
+    FastBuffer<Camera, 1> cam;
 
     vk::DescriptorSetLayout descLayout;
     vk::DescriptorPool descPool;
