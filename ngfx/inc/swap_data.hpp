@@ -2,6 +2,7 @@
 #define NGFX_SWAPDATA_H
 
 #include <vector>
+#include "config.hpp"
 #include "vulkan/vulkan.hpp"
 #include "context.hpp"
 
@@ -13,14 +14,17 @@ namespace ngfx
   // TODO: Support Swapchain rebuild for resizability
  struct SwapData {
     vk::SwapchainKHR swapchain;
-    std::vector<vk::Image> images;
-    std::vector<vk::ImageView> views;
-    std::vector<vk::Fence> fences;
     vk::Format format;
     vk::Extent2D extent;
     
-    //reference to device, only used for destructor
-    vk::Device *device;
+    //reference to Context, only used for destructor
+    Context *c;
+
+    uint32_t swapCount;
+    vk::Image images[kMaxSwapImages];
+    vk::ImageView views[kMaxSwapImages];
+    vk::Fence fences[kMaxSwapImages];
+    
     
     SwapData(Context *pContext);
     ~SwapData();

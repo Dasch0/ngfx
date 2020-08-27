@@ -232,14 +232,18 @@ namespace ngfx
 
   Overlay::~Overlay()
   {
-    device->destroyDescriptorPool(descPool);
-    device->destroyDescriptorSetLayout(descLayout);
-
     for(vk::Framebuffer &frame : frames)
     {
       device->destroyFramebuffer(frame);
     }
 
     device->destroyRenderPass(pass);
+    device->destroyPipelineLayout(layout);
+    device->destroyPipeline(pipeline);
+
+
+    device->freeDescriptorSets(descPool, descSet); 
+    device->destroyDescriptorSetLayout(descLayout);
+    device->destroyDescriptorPool(descPool);
   }
 }

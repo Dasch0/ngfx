@@ -56,6 +56,15 @@ namespace ngfx
 
     // TODO: Add destructor to clean up vk objs
   // Currently relies on cleanup() in test class which is bad 
-  Context::~Context(){};
+  Context::~Context()
+  {
+    device.destroyCommandPool(cmdPool);
+    device.destroy();
+    util::DestroyDebugUtilsMessengerEXT(instance, debugMessenger);
+    vkDestroySurfaceKHR(instance, surface, nullptr);
+    instance.destroy();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+  };
 }
 

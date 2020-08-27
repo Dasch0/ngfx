@@ -12,6 +12,8 @@ namespace ngfx
 #endif
 
   static const uint32_t kMaxFramesInFlight = 2;
+  static const size_t kMaxSwapImages = 5;
+  
   static const char * const kValLayers[] = {
     "VK_LAYER_KHRONOS_validation",
   };

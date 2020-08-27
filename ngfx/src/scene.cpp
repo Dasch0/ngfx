@@ -44,14 +44,8 @@ namespace ngfx
         vk::VertexInputRate::eInstance)
   };
 
-  Scene::Scene(Context *c, SwapData *s)
-    : device(&c->device), cam(s->extent), 
-      camBuffer(
-          &c->device,
-          &c->physicalDevice,
-          &c->cmdPool,
-          sizeof(cam.cam),
-          vk::BufferUsageFlagBits::eUniformBuffer)
+  Scene::Scene(Context *pContext, SwapData *pSwap)
+    : cam(pContext, pSwap->extent), c(pContext), s(pSwap), cmdCount(s->swapCount)
   {
     // RenderPass
     vk::AttachmentDescription
@@ -64,6 +58,7 @@ namespace ngfx
                       vk::AttachmentStoreOp::eDontCare,
                       vk::ImageLayout::eUndefined,
                       vk::ImageLayout::ePresentSrcKHR);
+
     vk::AttachmentReference colorAttachmentRef(
         0,
         vk::ImageLayout::eColorAttachmentOptimal);
@@ -101,8 +96,7 @@ namespace ngfx
     c->device.createRenderPass(&renderPassCI, nullptr, &pass);
     
     // Framebuffers
-    frames.resize(s->views.size());
-    for(size_t i = 0; i < s->views.size(); i++)
+    for(size_t i = 0; i < cmdCount; i++)
     {
       vk::ImageView attachments[] = {
         s->views[i]
@@ -138,7 +132,7 @@ namespace ngfx
         util::array_size(bindings),
         bindings); 
     
-    device->createDescriptorSetLayout(
+    c->device.createDescriptorSetLayout(
         &layoutCI,
         nullptr,
         &descLayout);
@@ -150,7 +144,7 @@ namespace ngfx
         0,
         nullptr);
 
-    device->createPipelineLayout(
+    c->device.createPipelineLayout(
         &pipelineLayoutCI,
         nullptr,
         &layout);
@@ -170,14 +164,8 @@ namespace ngfx
         &c->pipelineCache,
         &pipeline);
 
-    camBuffer.init();
     createDescriptorPool();
     createDescriptorSets();
-    camBuffer.stage(&cam.cam);
-
-    // TODO: Fix hack that stores queue here, prefer to restructure fastbuffer
-    q = &c->graphicsQueue;
-    camBuffer.blockingCopy(c->graphicsQueue);
   }
 
   void Scene::createDescriptorPool(void) {
@@ -193,7 +181,7 @@ namespace ngfx
         util::array_size(poolSize),
         poolSize); 
     
-    device->createDescriptorPool(
+    c->device.createDescriptorPool(
        &poolInfo, 
        nullptr, 
        &descPool);
@@ -205,12 +193,12 @@ namespace ngfx
                                             1,
                                             &descLayout);
 
-    device->allocateDescriptorSets(&allocInfo, &descSet);
+    c->device.allocateDescriptorSets(&allocInfo, &descSet);
 
     vk::DescriptorBufferInfo buffInfo(
-        camBuffer.localBuffer,
+        cam.cam.localBuffer,
         0,
-        sizeof(cam.cam));
+        sizeof(cam.cam.data));
     
     vk::WriteDescriptorSet descWrite[] = { 
       vk::WriteDescriptorSet(
@@ -224,20 +212,135 @@ namespace ngfx
           nullptr)
     };
 
-    device->updateDescriptorSets(
+    c->device.updateDescriptorSets(
         util::array_size(descWrite),
         descWrite,
         0,
         nullptr); 
   }
  
+    // TODO:: parallelize command buffer creation
+    void Scene::buildCommandBuffers(void)
+    {
+      vk::CommandBufferAllocateInfo allocInfo(
+          c->cmdPool,
+          vk::CommandBufferLevel::ePrimary,
+          (uint)s->swapCount);
+      
+      c->device.allocateCommandBuffers(&allocInfo, cmdBuff);
+
+      for (size_t i = 0; i < cmdCount; i++) {
+        vk::CommandBufferBeginInfo beginInfo(
+            vk::CommandBufferUsageFlags(),
+            nullptr);
+
+        vk::DeviceSize offsets[] = {0};
+
+        // TODO: Fix weird code for clearValue
+        // Currently requires two sub-classes to construct
+        const std::array<float, 4> clearColorPrimative = {0.1f, 0.1f, 0.1f,
+                                                          1.0f};
+        vk::ClearColorValue clearColor(clearColorPrimative);
+        const vk::ClearValue clearValue(clearColor);
+
+        vk::RenderPassBeginInfo scenePassInfo(
+            pass,
+            frames[i],
+            vk::Rect2D(
+              vk::Offset2D(0, 0),
+              s->extent),
+            1,
+            &clearValue);
+
+        cmdBuff[i].beginRenderPass(
+            scenePassInfo,
+            vk::SubpassContents::eInline);
+        cmdBuff[i].bindPipeline(
+            vk::PipelineBindPoint::eGraphics,
+            pipeline);
+        cmdBuff[i].bindVertexBuffers(
+            0,
+            1,
+            &_envVertexBuffer.localBuffer,
+            (const vk::DeviceSize *)offsets);
+        cmdBuff[i].bindVertexBuffers(
+            1,
+            1,
+            &_envInstanceBuffer.localBuffer,
+            (const vk::DeviceSize *)offsets);
+        cmdBuff[i].bindIndexBuffer(
+            _envIndexBuffer.localBuffer,
+            0,
+            vk::IndexType::eUint16);
+        cmdBuff[i].bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics,
+            cameraArray.layout,
+            0,
+            1,
+            &cameraArray.descSet,
+            0,
+            nullptr);
+        cmdBuff[i].drawIndexed(
+            util::array_size(testIndices),
+            util::array_size(testInstances),
+            0,
+            0,
+            0);
+        cmdBuff[i].endRenderPass();
+
+        cmdBuff[i].beginRenderPass(overlayPassInfo,
+                                          vk::SubpassContents::eInline);
+
+        cmdBuff[i].pushConstants(
+            overlay.layout, vk::ShaderStageFlagBits::eVertex, 0,
+            sizeof(OverlayTestOffset), (void *)&overlayOffset);
+
+        cmdBuff[i].bindPipeline(
+            vk::PipelineBindPoint::eGraphics,
+            overlay.pipeline);
+
+        cmdBuff[i].bindVertexBuffers(
+            0,
+            1,
+            &_overlayVertexBuffer.localBuffer,
+            (const vk::DeviceSize *)offsets);
+
+        cmdBuff[i].bindIndexBuffer(
+            _overlayIndexBuffer.localBuffer,
+            0,
+            vk::IndexType::eUint16);
+        cmdBuff[i].bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics,
+            overlay.layout,
+            0,
+            1,
+            &overlay.descSet,
+            0,
+            nullptr);
+        cmdBuff[i].drawIndexed(
+            util::array_size(overlayIndices),
+            1,
+            0,
+            0,
+            0);
+        cmdBuff[i].endRenderPass();
+        cmdBuff[i].end();
+      }
+    }
   Scene::~Scene()
   {
     for(vk::Framebuffer &frame : frames)
     {
-      device->destroyFramebuffer(frame);
+      c->device.destroyFramebuffer(frame);
     }
 
-    device->destroyRenderPass(pass);
+    c->device.destroyRenderPass(pass);
+    c->device.destroyPipelineLayout(layout);
+    c->device.destroyPipeline(pipeline);
+
+
+    c->device.freeDescriptorSets(descPool, descSet); 
+    c->device.destroyDescriptorSetLayout(descLayout);
+    c->device.destroyDescriptorPool(descPool);
   }
 }

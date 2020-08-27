@@ -2,11 +2,13 @@
 #define NGFX_SCENE_H
 
 #include "vulkan/vulkan.hpp"
-#include "context.hpp"
+#include "config.hpp"
 #include "swap_data.hpp"
 #include "util.hpp"
 #include "camera.hpp"
 #include "fast_buffer.hpp"
+#include "context.hpp"
+
 
 namespace ngfx
 {
@@ -15,27 +17,31 @@ namespace ngfx
     static vk::VertexInputAttributeDescription attribute[];
     static vk::VertexInputBindingDescription binding[];
     vk::RenderPass pass;
-    std::vector<vk::Framebuffer> frames;
+
     vk::PipelineLayout layout;
     vk::Pipeline pipeline;
-    util::Mvp mvp;
-    
-    FastBuffer<Camera, 1> cam;
-
+    Camera<1> cam;
     vk::DescriptorSetLayout descLayout;
     vk::DescriptorPool descPool;
     vk::DescriptorSet descSet;
 
     // Pointer for device held for use in destructor only
     // Pointer must stay valid for lifetime
-    vk::Device *device;
-    vk::Queue *q;
-    Scene(Context *c, SwapData *s);
+    Context *c;
+    SwapData *s;
+
+    uint32_t cmdCount;
+    
+    vk::Framebuffer frames[kMaxSwapImages];
+    vk::CommandBuffer cmdBuff[kMaxSwapImages];
+
+    Scene(Context *pContext, SwapData *pSwap);
     ~Scene();
 
     private:
       void createDescriptorPool(void);
       void createDescriptorSets(void);
+      void buildCommandBuffers(void);
   };
 }
 

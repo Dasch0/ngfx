@@ -1,13 +1,13 @@
 #include "swap_data.hpp"
-
+#include "config.hpp"
 
 namespace ngfx
 {
-  SwapData::SwapData(Context *c) 
-    : device(&c->device)
+  SwapData::SwapData(Context *pContext) 
+    : c(pContext)
   {
-    // Swapchain & Format
     
+    // Swapchain & Format
     vk::SurfaceFormatKHR surfaceForm =
         util::chooseSwapSurfaceFormat(c->swapInfo.formats);
     vk::PresentModeKHR presentMode =
@@ -24,7 +24,6 @@ namespace ngfx
       imageCount = c->swapInfo.capabilites.maxImageCount;
     }
     
-
     uint32_t indices[] = {
       c->qFamilies.graphicsFamily.value(),
       c->qFamilies.presentFamily.value()
@@ -54,18 +53,17 @@ namespace ngfx
     c->device.createSwapchainKHR(&swapchainCI, nullptr, &swapchain);
 
     // Images & Views
-    
-    uint32_t swapchainImageCount = 0;
     c->device.getSwapchainImagesKHR(swapchain,
-                                 &swapchainImageCount,
+                                 &swapCount,
                                  (vk::Image *) nullptr);
-    images.resize(swapchainImageCount);
 
+    assert(swapCount > kMaxSwapImages);
+    
     c->device.getSwapchainImagesKHR(swapchain,
-                                 &swapchainImageCount,
-                                 images.data());
-    views.resize(swapchainImageCount);
-    for (size_t i = 0; i < swapchainImageCount; i++)
+                                 &swapCount,
+                                 images);
+    
+    for (size_t i = 0; i < swapCount; i++)
     {
       vk::ImageViewCreateInfo
         viewCI(vk::ImageViewCreateFlags(),
@@ -87,8 +85,8 @@ namespace ngfx
   {
     for (auto view : views)
     {
-      device->destroyImageView(view);
+      c->device.destroyImageView(view);
     }
-    device->destroySwapchainKHR(swapchain);
+    c->device.destroySwapchainKHR(swapchain);
   }
 }

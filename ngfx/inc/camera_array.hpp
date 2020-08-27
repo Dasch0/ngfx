@@ -19,9 +19,9 @@ namespace ngfx
       util::Fbo fbo;
       vk::PipelineLayout layout;
       vk::Pipeline pipeline;
-      
-      Camera cam;
-      util::FastBuffer camBuffer;
+     
+      // TODO: Multiview support
+      Camera<1> cam;
 
       vk::DescriptorSetLayout descLayout;
       vk::DescriptorPool descPool;

@@ -12,8 +12,6 @@
  * https://vulkan-tutorial.com/en/
  */
 
-// TODO: purge std::vector use
-
 #include <iostream>
 #include <vector>
 #include <cstring>

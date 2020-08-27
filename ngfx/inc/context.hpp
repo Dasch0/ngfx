@@ -31,9 +31,8 @@ namespace ngfx
     util::SwapchainSupportDetails swapInfo;
     vk::PipelineCache pipelineCache;
     vk::CommandPool cmdPool;
-
-    // Useful configuration info
     vk::SampleCountFlags msaaSamples;
+
     Context();
     ~Context();
   };  

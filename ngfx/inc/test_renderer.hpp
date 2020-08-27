@@ -16,10 +16,12 @@
 #include "overlay.hpp"
 #include "pipeline.hpp"
 #include "camera_array.hpp"
+#include "mesh_table.hpp"
 
 // TODO: Docs
 namespace ngfx
-{
+{ 
+
   const util::Vertex testVertices[] = {
     {{-0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 0.0f}},
     {{0.0f, 0.5f}, {0.9f, 0.9f, 0.9f}, {1.0f, 0.0f}},
@@ -64,15 +66,17 @@ namespace ngfx
   public:
     Context c;
     SwapData swapData;
+
+    MeshTable<9, 6> testData;
+    MeshTable<1, 6> overlayData;
     Scene scene;
     CameraArray cameraArray;
     Overlay overlay;
-    Camera cam;
 
     TestRenderer()
-        : c(), swapData(&c), scene(&c, &swapData), 
-          cameraArray(&c), overlay(&c, &swapData, cameraArray.fbo.view),
-          cam(swapData.extent), _currentFrame(0) {}
+        : c(), swapData(&c), testData(&c), overlayData(&c), 
+          scene(&c, &swapData), cameraArray(&c), 
+          overlay(&c, &swapData, cameraArray.fbo.view), _currentFrame(0) {}
     
     // TODO: Move these somewhere better
     static void key_callback(
@@ -83,7 +87,7 @@ namespace ngfx
         int mods)
     {
       CameraArray *cameraArray = (CameraArray *) glfwGetWindowUserPointer(w);
-      Camera* cam = &cameraArray->cam;
+      Camera *cam = &cameraArray->cam;
       glm::float64 delta = .1;
       glm::float64 theta = .1;
       if (key == GLFW_KEY_ESCAPE)
@@ -130,8 +134,6 @@ namespace ngfx
 
     void init(void)
     {
-      createEnvBuffers(); 
-      createOverlayBuffers();
       buildOffscreenCommandBuffer();
       buildCommandBuffers();
 
@@ -160,12 +162,6 @@ namespace ngfx
   private:
     std::vector<vk::CommandBuffer> commandBuffers;
     vk::CommandBuffer offscreenCommandBuffer;
-
-    util::FastBuffer _overlayVertexBuffer;
-    util::FastBuffer _overlayIndexBuffer;
-    util::FastBuffer _envVertexBuffer;
-    util::FastBuffer _envIndexBuffer;
-    util::FastBuffer _envInstanceBuffer;
 
     util::SemaphoreSet _semaphores[ngfx::kMaxFramesInFlight];
     vk::Fence _inFlightFences[ngfx::kMaxFramesInFlight];
@@ -200,26 +196,12 @@ namespace ngfx
 
     void cleanup(void)
     {
-      // TODO: Fix destructor ordering/dependencies so this doesn't happen
-      _overlayVertexBuffer.~FastBuffer();
-      _overlayIndexBuffer.~FastBuffer();
-
       for (uint i = 0; i < ngfx::kMaxFramesInFlight; i++)
       {
         c.device.destroySemaphore(_semaphores[i].imageAvailable);
         c.device.destroySemaphore(_semaphores[i].renderComplete);
         c.device.destroyFence(_inFlightFences[i]);
       }
-
-      c.device.destroyCommandPool(c.cmdPool);
-      c.device.destroy();
-      util::DestroyDebugUtilsMessengerEXT(c.instance, c.debugMessenger);
-      vkDestroySurfaceKHR(c.instance, c.surface, nullptr);
-      c.instance.destroy();
-
-      glfwDestroyWindow(c.window);
-
-      glfwTerminate();
     }
 
     void drawOffscreenFrame(void)
@@ -323,12 +305,10 @@ namespace ngfx
           &_envInstanceBuffer.localBuffer,
           (const vk::DeviceSize *) offsets);
 
-
       cmd->bindIndexBuffer(
           _envIndexBuffer.localBuffer,
           0,
           vk::IndexType::eUint16);
-
 
       cmd->bindDescriptorSets(
           vk::PipelineBindPoint::eGraphics,
@@ -468,66 +448,7 @@ namespace ngfx
         commandBuffers[i].end();
       }
     }
-
-    // TODO: use dedicated transfer queue, remove need for blocking copy
-    void createOverlayBuffers(void)
-    {
-      _overlayVertexBuffer = util::FastBuffer(
-          &c.device,
-          &c.physicalDevice,
-          &c.cmdPool,
-          sizeof(overlayVertices),
-          vk::BufferUsageFlagBits::eVertexBuffer);
-
-      _overlayVertexBuffer.init();
-      _overlayVertexBuffer.stage((void *)overlayVertices);
-      _overlayVertexBuffer.copy(c.graphicsQueue);
-
-      _overlayIndexBuffer = util::FastBuffer(
-          &c.device,
-          &c.physicalDevice,
-          &c.cmdPool,
-          sizeof(overlayIndices),
-          vk::BufferUsageFlagBits::eIndexBuffer);
-      
-      _overlayIndexBuffer.init();
-      _overlayIndexBuffer.stage((void *)overlayIndices);
-      _overlayIndexBuffer.copy(c.graphicsQueue);
-    }
-
-    void createEnvBuffers(void)
-    {
-      _envVertexBuffer = util::FastBuffer(
-          &c.device, 
-          &c.physicalDevice, 
-          &c.cmdPool,
-          sizeof(testVertices),
-          vk::BufferUsageFlagBits::eVertexBuffer);
-      _envVertexBuffer.init();
-      _envVertexBuffer.stage((void *) testVertices);
-      _envVertexBuffer.copy(c.graphicsQueue);
-      
-      _envIndexBuffer = util::FastBuffer(
-          &c.device, 
-          &c.physicalDevice, 
-          &c.cmdPool,
-          sizeof(testIndices),
-          vk::BufferUsageFlagBits::eIndexBuffer);
-      _envIndexBuffer.init();
-      _envIndexBuffer.stage((void *) testIndices);
-      _envIndexBuffer.copy(c.graphicsQueue);
-
-      _envInstanceBuffer = util::FastBuffer(
-          &c.device, 
-          &c.physicalDevice, 
-          &c.cmdPool,
-          sizeof(testInstances),
-          vk::BufferUsageFlagBits::eVertexBuffer);
-      _envInstanceBuffer.init();
-      _envInstanceBuffer.stage((void *) testInstances);
-      _envInstanceBuffer.blockingCopy(c.graphicsQueue);
-    }    
   };
 }
 
-#endif // NGFX_TESTRENDERER_H
+

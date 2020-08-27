@@ -24,7 +24,7 @@ namespace ngfx
     size_t count;
     size_t size;
     T data[N];
-
+ 
     FastBuffer(Context *context, vk::BufferUsageFlags usage, T initData[N]);
 
     void copy(void);

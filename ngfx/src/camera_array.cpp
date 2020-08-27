@@ -289,5 +289,12 @@ namespace ngfx
   CameraArray::~CameraArray()
   {
     device->destroyRenderPass(pass);
+    device->destroyPipelineLayout(layout);
+    device->destroyPipeline(pipeline);
+
+
+    device->freeDescriptorSets(descPool, descSet); 
+    device->destroyDescriptorSetLayout(descLayout);
+    device->destroyDescriptorPool(descPool);
   }
 }

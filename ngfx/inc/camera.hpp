@@ -1,11 +1,12 @@
 #ifndef NGFX_CAMERA_H
 #define NGFX_CAMERA_H
 
+#include <vulkan/vulkan.hpp>
 #include "glm/fwd.hpp"
-#include "vulkan/vulkan.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "fast_buffer.hpp"
+#include "context.hpp"
 
 namespace ngfx
 {
@@ -21,7 +22,9 @@ namespace ngfx
       glm::mat4 proj[N];
       FastBuffer<glm::mat4, N> cam;
 
-      Camera(vk::Extent2D extent) {
+      Camera(Context *c, vk::Extent2D extent)
+        : cam(c, vk::BufferUsageFlagBits::eUniformBuffer, {0})
+      {
         // Set projection matrix
         
         for (size_t i = 0; i < N; i++) {
@@ -32,7 +35,10 @@ namespace ngfx
               1000.0);
          
           // Set initial pos, pitch and yaw
-          jump(glm::vec3(0.0, 0.0, .1), 0, 0, 0);
+          // TODO: parameterize initial state
+          glm::vec3 pos = glm::vec3(0.0, 0.0, .1);
+          float init = 0.0;
+          jump( &pos, &init, &init, &init);
         }
         
         build();
@@ -131,6 +137,7 @@ namespace ngfx
                 1));
           
           cam.data[i] = proj[i] * view[i];
+        }
       }
     };
 }
