@@ -1,7 +1,6 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "ngfx.hpp"
 #include "config.hpp"
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_core.h>
@@ -34,25 +33,6 @@ namespace ngfx
     struct SemaphoreSet {
       vk::Semaphore imageAvailable;
       vk::Semaphore renderComplete;
-    };
-
-    //TODO: Refactor along with vertex binding and attr code to make this useful
-    //TODO: AOSOA layout
-    struct Vertex {
-      glm::vec2 pos;
-      glm::vec3 color;
-      glm::vec2 texCoord;
-    };
-
-    //TODO: Refactor along with vertex binding and attr code to make this useful
-    struct Instance {
-      glm::vec2 pos;
-   };
-
-    struct Mvp {
-      glm::mat4 model;
-      glm::mat4 view;
-      glm::mat4 proj;
     };
 
     // Abstracts buffer and transfer semantics for a fast uniform/vertex buffer

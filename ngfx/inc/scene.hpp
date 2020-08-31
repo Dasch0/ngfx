@@ -17,7 +17,6 @@ namespace ngfx
     std::vector<vk::Framebuffer> frames;
     vk::PipelineLayout layout;
     vk::Pipeline pipeline;
-    util::Mvp mvp;
     
     Camera cam;
     util::FastBuffer camBuffer;

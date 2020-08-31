@@ -2,7 +2,6 @@
 #define CONTEXT_H
 
 #include <vulkan/vulkan.hpp>
-#include "ngfx.hpp"
 #include "config.hpp"
 #include "util.hpp"
 
@@ -16,7 +15,8 @@ namespace ngfx
     static const uint32_t kHeight = 600;
     static const bool kResizable = false;
     static const bool kVsync = false;
-
+    // TODO: move window outside of context
+    // allow for support of other window managers
     GLFWwindow *window;
     vk::Instance instance;
     vk::DebugUtilsMessengerEXT debugMessenger;

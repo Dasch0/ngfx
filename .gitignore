@@ -44,3 +44,5 @@ CMakeFiles/
 
 #autosaves
 *.autosave
+
+.clangd/

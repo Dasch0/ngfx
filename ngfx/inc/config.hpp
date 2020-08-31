@@ -1,7 +1,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include "ngfx.hpp"
+#include <vulkan/vulkan.hpp>
 
 namespace ngfx
 {
