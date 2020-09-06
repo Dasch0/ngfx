@@ -1,13 +1,12 @@
-// Source for context class
-#include "context.hpp"
-#include "config.hpp"
+// Source for context struct 
+#include "ngfx.hpp"
 #include "util.hpp"
-
 
 namespace ngfx
 {
   Context::Context()
   {
+    // TODO: Move window creation out of Context
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, kResizable);
@@ -55,8 +54,18 @@ namespace ngfx
     cmdPool = util::createCommandPool(&device,  qFamilies);
   };
 
-    // TODO: Add destructor to clean up vk objs
+  // TODO: Add destructor to clean up vk objs
   // Currently relies on cleanup() in test class which is bad 
-  Context::~Context(){};
+  Context::~Context()
+  {
+    device.destroyCommandPool(cmdPool);
+    device.destroy();
+    util::DestroyDebugUtilsMessengerEXT(instance, debugMessenger);
+    instance.destroySurfaceKHR(surface);
+    instance.destroy();
+    
+    glfwDestroyWindow(window);
+    glfwTerminate();
+  };
 }
 

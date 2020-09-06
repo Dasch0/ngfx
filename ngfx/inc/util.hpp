@@ -35,43 +35,6 @@ namespace ngfx
       vk::Semaphore renderComplete;
     };
 
-    // Abstracts buffer and transfer semantics for a fast uniform/vertex buffer
-    // that is easy to work with on the CPU side
-    // TODO: batch buffer allocations
-    struct FastBuffer
-    {
-    public:
-      bool valid;
-      vk::Device *device;
-      vk::PhysicalDevice *phys;
-      vk::CommandPool *pool;
-      vk::DeviceSize size;
-      vk::BufferUsageFlags usage;
-      vk::Buffer stagingBuffer;
-      vk::DeviceMemory stagingMemory;
-      vk::Buffer localBuffer;
-      vk::DeviceMemory localMemory;
-      vk::CommandBuffer commandBuffer;
-
-      FastBuffer(void);
-
-      FastBuffer(
-          vk::Device *dev,
-          vk::PhysicalDevice *physDev,
-          vk::CommandPool *cmdPool,
-          vk::DeviceSize size,
-          vk::BufferUsageFlags usage);
-
-      void init(void);
-      void stage(void* data);
-      void copy(vk::Queue q);
-      void blockingCopy(vk::Queue q);
-      ~FastBuffer(void);
-    
-    private:
-      void *_handle;
-    };
-
     struct Fbo
     {
       vk::Image image;

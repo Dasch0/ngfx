@@ -12,14 +12,10 @@
  * https://vulkan-tutorial.com/en/
  */
 
-// TODO: purge std::vector use
-
 #include <iostream>
-#include <vector>
 #include <cstring>
 #include <optional>
 #include <set>
-#include <algorithm>
 #include <fstream>
 
 #define GLFW_INCLUDE_VULKAN
@@ -33,11 +29,18 @@
 #define VULKAN_HPP_NO_EXCEPTIONS
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vk_sdk_platform.h>
-
 #include "util.hpp"
 
 namespace ngfx {
 
+  /* Basic memory arena implementation for storing renderer data
+   * TODO: expand this, maybe move to external library
+   */
+  static const size_t kArenaSize = 536870912;
+  static const int8_t kAlignment = 16; // alignment in bytes
+  alignas(128) static uint8_t arena[kArenaSize];
+  static size_t used = 0; // will always be kAlignment aligned
+  
   /*
    * Handle
    *  A basic type used for accessing any table or list of data
@@ -54,7 +57,30 @@ namespace ngfx {
     Handle(T *pointer, int32_t count)
       : ptr(pointer), cnt(count) 
     {}
+
+    T &operator[](int32_t i)
+    {
+      return ptr[i];
+    }
   };
+
+  /* alloc
+   *  Allocates new data in the memory arena, returns a Handle
+   *  to the created array.
+   */
+  template<typename T>
+  inline Handle<T> alloc(int32_t cnt)
+  {
+    T *ptr = (T *)(arena + used); // assume used is aligned
+    size_t s = sizeof(T) * cnt;
+ 
+    // Ensure used is aligned for next alloc
+    auto mod = (ptr + s) & (kAlignment-1);
+    used += s + (mod != 0) * (kAlignment - mod);
+    assert(used < kArenaSize);
+    memset(ptr, 0, s);
+    return Handle<T>(ptr, cnt);
+  }
 
   /* 
    * Vertex
@@ -68,6 +94,7 @@ namespace ngfx {
     glm::vec2 texCoord;   
   };
 
+  typedef uint16_t Index;
 
   /* Instance
    *  Storage of the model transforms used when rendering multiple 
@@ -136,8 +163,8 @@ namespace ngfx {
    * Camera
    *  General CPU calculated camera class
    *  This class computes the ViewProjection matrix for rendering a scene
+   *  TODO: move the computation to the GPU
    */
-  
   class Camera {
     public:
       glm::vec3 pos;
@@ -145,7 +172,8 @@ namespace ngfx {
       
       glm::mat4 view, proj, cam;
 
-      Camera(vk::Extent2D extent) {
+      Camera(vk::Extent2D extent)
+      {
         // Set projection matrix
         proj = glm::perspective(
             glm::radians(90.0),
@@ -241,8 +269,16 @@ namespace ngfx {
         
         cam = proj * view;
       }
-    };
+  };
 
+  /* RenderTarget
+   *  Stores data for drawing the scene to an image from a given perspective
+   *  Intermediate render targets are not supported 
+   */
+  struct RenderTarget {
+  
+  };
+  
   /*
    * Context
    *  The context is the base class of ngfx, storing all the core constructs
@@ -278,7 +314,79 @@ namespace ngfx {
     ~Context();
   };
 
+  /* gBuffer
+   *  Abstracts GPU buffer and transfer semantics and provides
+   *  fast transfers between the GPU and CPU
+   */
+  struct gBuffer 
+  {
+    bool valid;
+    Context *c;
+    vk::DeviceSize size;
+    vk::BufferUsageFlags usage;
+    vk::Buffer stagingBuffer;
+    vk::DeviceMemory stagingMemory;
+    vk::Buffer localBuffer;
+    vk::DeviceMemory localMemory;
+    vk::CommandBuffer commandBuffer;
 
+    gBuffer(Context *context);
 
+    void init(vk::DeviceSize size, vk::BufferUsageFlags usage);
+    void map(void* data);
+    void unmap();
+    void copy();
+    void blockingCopy();
+    ~gBuffer(void);
+  };
+
+  /*
+   * Scene
+   *  Core struct for rendering mesh objects to render targets
+   */
+  struct Scene
+    {
+      // Handles to CPU side resources
+      Handle<Vertex> vertices;
+      Handle<uint16_t> indices;
+      Handle<vk::DeviceSize> vertexOffsets;
+      Handle<vk::DeviceSize> indexOffsets;
+      Handle<vk::DrawIndexedIndirectCommand> drawCmds;
+      // TODO: Determine if there is a way to use mapping to remove need
+      // for the unified Instances buffer
+      Handle<Handle<Instance>> instances;
+      Handle<Instance> unifiedInstances;
+      Handle<Camera> cameras;
+      Handle<RenderTarget> targets;
+
+      // Buffers for GPU side resources
+      gBuffer vertexBuffer;
+      gBuffer indexBuffer;
+      gBuffer drawCmdBufffer;
+      gBuffer instanceBuffer;
+      gBuffer cameraBuffer;
+      gBuffer targetBuffer;
+
+      vk::RenderPass pass;
+      std::vector<vk::Framebuffer> frames;
+      vk::PipelineLayout layout;
+      vk::Pipeline pipeline;
+      
+      vk::DescriptorSetLayout descLayout;
+      vk::DescriptorPool descPool;
+      vk::DescriptorSet descSet;
+
+      // Pointer for device held for use in destructor only
+      // Pointer must stay valid for lifetime
+      Context *c;
+
+      Scene(Context *c);
+      void loadMeshes(Handle<Mesh> meshes);
+      ~Scene();
+
+      private:
+        void createDescriptorPool(void);
+        void createDescriptorSets(void);
+    };
 }
 #endif // NGFX_H
