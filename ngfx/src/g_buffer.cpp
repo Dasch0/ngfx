@@ -1,5 +1,5 @@
 #include "ngfx.hpp"
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_core.h>
 
 namespace ngfx 
 {
@@ -16,6 +16,12 @@ namespace ngfx
                                   vk::SharingMode::eExclusive,
                                   0,
                                   nullptr);
+    
+    VmaAllocationCreateInfo stagingVma = {};
+    stagingVma.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    vmaCreateBuffer(c->allocator, VkBufferCreateInfo stagingCI), &stagingVma, &stagingBuffer, &stagingMemory, nullptr);
+
     c->device.createBuffer(&stagingCI,
                          nullptr,
                          &stagingBuffer);
@@ -28,7 +34,7 @@ namespace ngfx
                                   vk::SharingMode::eExclusive,
                                   0,
                                   nullptr);
-    c->device->createBuffer(&localCI,
+    c->device.createBuffer(&localCI,
                          nullptr,
                          &localBuffer);
 

@@ -9,6 +9,7 @@ set(
     "src/scene.cpp"
     "src/overlay.cpp"
     "src/camera_array.cpp"
+    "src/vk_mem_alloc.cpp"
 )
 
 set(
@@ -24,6 +25,7 @@ set(
     "inc/overlay.hpp"
     "inc/camera_array.hpp"
     "inc/camera.hpp"
+    "inc/vma/vk_mem_alloc.h"
 )
 
 add_executable(ngfx ${SOURCES} ${HEADERS})

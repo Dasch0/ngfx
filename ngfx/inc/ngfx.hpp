@@ -19,16 +19,17 @@
 #include <fstream>
 
 #define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include "GLFW/glfw3.h"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "glm/glm.hpp"
-#include <glm/gtc/matrix_transform.hpp>
+#include "glm/gtc/matrix_transform.hpp"
 #define VULKAN_HPP_TYPESAFE_CONVERSION
 #define VULKAN_HPP_NO_EXCEPTIONS
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vk_sdk_platform.h>
+#include "vma/vk_mem_alloc.h"
 #include "util.hpp"
 
 namespace ngfx {
@@ -304,6 +305,7 @@ namespace ngfx {
     vk::Queue presentQueue;
     vk::Queue graphicsQueue;
     vk::Queue transferQueue;
+    VmaAllocator allocator;
     util::SwapchainSupportDetails swapInfo;
     vk::PipelineCache pipelineCache;
     vk::CommandPool cmdPool;
@@ -325,9 +327,9 @@ namespace ngfx {
     vk::DeviceSize size;
     vk::BufferUsageFlags usage;
     vk::Buffer stagingBuffer;
-    vk::DeviceMemory stagingMemory;
+    VmaAllocation stagingMemory;
     vk::Buffer localBuffer;
-    vk::DeviceMemory localMemory;
+    VmaAllocation localMemory;
     vk::CommandBuffer commandBuffer;
 
     gBuffer(Context *context);

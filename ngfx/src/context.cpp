@@ -37,16 +37,21 @@ namespace ngfx
     graphicsQueue = device.getQueue(qFamilies.graphicsFamily.value(), 0);
     presentQueue = device.getQueue(qFamilies.presentFamily.value(), 0);
     transferQueue = device.getQueue(qFamilies.transferFamily.value(), 0);
+
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = physicalDevice;
+    allocatorInfo.device = device;
+    allocatorInfo.instance = instance;
+    vmaCreateAllocator(&allocatorInfo, &allocator);
+    
     util::querySwapchainSupport(&physicalDevice, &surface, &swapInfo);
 
     // Defining a single pipelineCache to be shared for the whole context
     // According to Vendors (Nvidia do's & dont's) this is recommended 
-    
     vk::PipelineCacheCreateInfo cacheCI(
         vk::PipelineCacheCreateFlags(),
         0,
         nullptr);
-    
     device.createPipelineCache(&cacheCI, nullptr, &pipelineCache);
 
     // command pool
