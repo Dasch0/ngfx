@@ -308,8 +308,8 @@ namespace ngfx {
     VmaAllocator allocator;
     util::SwapchainSupportDetails swapInfo;
     vk::PipelineCache pipelineCache;
-    vk::CommandPool cmdPool;
-
+    vk::CommandPool cmdPool; // Generic command pool
+    vk::CommandPool transferPool; // Dedicated async transfer pool
     // Useful configuration info
     vk::SampleCountFlags msaaSamples;
     Context();
@@ -326,19 +326,19 @@ namespace ngfx {
     Context *c;
     vk::DeviceSize size;
     vk::BufferUsageFlags usage;
-    vk::Buffer stagingBuffer;
+    VkBuffer stagingBuffer;
     VmaAllocation stagingMemory;
-    vk::Buffer localBuffer;
+    VkBuffer localBuffer;
     VmaAllocation localMemory;
     vk::CommandBuffer commandBuffer;
 
     gBuffer(Context *context);
 
     void init(vk::DeviceSize size, vk::BufferUsageFlags usage);
-    void map(void* data);
-    void unmap();
-    void copy();
-    void blockingCopy();
+    void *map(void);
+    void unmap(void);
+    void copy(void);
+    void blockingCopy(void);
     ~gBuffer(void);
   };
 
@@ -384,6 +384,7 @@ namespace ngfx {
 
       Scene(Context *c);
       void loadMeshes(Handle<Mesh> meshes);
+      void initInstances(Handle<Handle<Instance>> instanceTable);
       ~Scene();
 
       private:

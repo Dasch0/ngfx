@@ -1,6 +1,7 @@
 // Source for context struct 
 #include "ngfx.hpp"
 #include "util.hpp"
+#include <vulkan/vulkan.hpp>
 
 namespace ngfx
 {
@@ -54,9 +55,17 @@ namespace ngfx
         nullptr);
     device.createPipelineCache(&cacheCI, nullptr, &pipelineCache);
 
-    // command pool
+    // Create Command Pools
     // TODO: multiple pools for threaded recording
-    cmdPool = util::createCommandPool(&device,  qFamilies);
+    vk::CommandPoolCreateInfo cmdPoolInfo(
+        vk::CommandPoolCreateFlags(),
+        qFamilies.graphicsFamily.value());
+    device.createCommandPool(&cmdPoolInfo, nullptr, &cmdPool);
+
+    // Create dedicated command pool for transfers
+    cmdPoolInfo.queueFamilyIndex = qFamilies.transferFamily.value();
+    device.createCommandPool(&cmdPoolInfo, nullptr, &transferPool);
+    
   };
 
   // TODO: Add destructor to clean up vk objs

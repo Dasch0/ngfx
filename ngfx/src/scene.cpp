@@ -184,7 +184,6 @@ namespace ngfx
 //        nullptr); 
   }
 
-
   void Scene::loadMeshes(Handle<Mesh> meshes)
   {
     vertexOffsets = alloc<vk::DeviceSize>(meshes.cnt);
@@ -197,9 +196,16 @@ namespace ngfx
       indexOffsets[i] = iCnt * sizeof(Index);
       iCnt += meshes[i].indices.cnt;
     }
-    vertices = alloc<Vertex>(vCnt);
-    indices = alloc<Index>(iCnt);
+    vertices.cnt = vCnt;
+    indices.cnt = iCnt;
 
+    // Get mapped Handles to vertices/indices for host side loading of data
+    vertexBuffer.init(sizeof(Vertex) * vCnt, vk::BufferUsageFlagBits::eVertexBuffer);
+    vertices.ptr = (Vertex *) vertexBuffer.map();
+    indexBuffer.init(sizeof(Index) * iCnt, vk::BufferUsageFlagBits::eIndexBuffer);
+    indices.ptr = (Index *) indexBuffer.map();
+
+    // Load mesh data into buffers
     for(size_t i = 0; i < meshes.cnt;i++) {
        memcpy(
            vertices.ptr + vertexOffsets[i],
@@ -211,8 +217,16 @@ namespace ngfx
            meshes[i].indices.cnt);
     }
 
+    // Copy buffers to GPU
+    vertexBuffer.copy();
+    indexBuffer.blockingCopy();
   }
   
+  void Scene::initInstances(Handle<Handle<Instance>> instanceTable)
+  {
+    instances = instanceTable;
+
+  }
   Scene::~Scene()
   {
     for(vk::Framebuffer &frame : frames)

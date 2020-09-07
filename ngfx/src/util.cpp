@@ -422,17 +422,6 @@ namespace ngfx
       return shader;
     }
 
-    vk::CommandPool createCommandPool(vk::Device *device,
-                                      QueueFamilyIndices indices)
-    {
-      vk::CommandPoolCreateInfo poolCI(vk::CommandPoolCreateFlags(),
-                                       indices.graphicsFamily.value());
-
-      vk::CommandPool pool;
-      device->createCommandPool(&poolCI, nullptr, &pool);
-      return pool;
-    }
-
     uint32_t findMemoryType(vk::PhysicalDevice &phys,
                             uint32_t typeFilter,
                             vk::MemoryPropertyFlags requiredProps)
