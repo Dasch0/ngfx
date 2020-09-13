@@ -1,3 +1,4 @@
+#include "glm/fwd.hpp"
 #include "ngfx.hpp"
 #include <vulkan/vulkan.hpp>
 
@@ -216,17 +217,59 @@ namespace ngfx
            meshes[i].indices.ptr,
            meshes[i].indices.cnt);
     }
-
     // Copy buffers to GPU
     vertexBuffer.copy();
-    indexBuffer.blockingCopy();
+    indexBuffer.copy();
   }
   
-  void Scene::initInstances(Handle<Handle<Instance>> instanceTable)
+  void Scene::initInstances(Handle<size_t> instanceCounts)
   {
-    instances = instanceTable;
-
+    instanceOffsets = alloc<vk::DeviceSize>(instanceCounts.cnt);
+    size_t iCnt = 0;
+    for(size_t i = 0; i < instanceCounts.cnt; i++) {
+      instanceOffsets[i] = iCnt;
+      iCnt += instanceCounts[i];
+    }
+    instances.cnt = iCnt;
+    instanceBuffer.init(
+        sizeof(Instance) * iCnt,
+        vk::BufferUsageFlagBits::eVertexBuffer);
+    
+    instances.ptr = (Instance *) instanceBuffer.map();
   }
+
+  void Scene::initCameras(size_t count)
+  {
+    cameras = alloc<Camera>(count);
+    viewProjectionBuffer.init(
+        sizeof(glm::mat4) * count,
+        vk::BufferUsageFlagBits::eUniformBuffer);
+    
+    viewProjections.ptr = (glm::mat4 *) viewProjectionBuffer.map();
+    viewProjections.cnt = count;
+  }
+
+  void Scene::buildIndirectDrawCommands(void)
+  {
+    drawCmdBuffer.init(vertexOffsets.cnt, vk::BufferUsageFlagBits::eIndirectBuffer);
+    drawCmds.ptr = (vk::DrawIndexedIndirectCommand *) drawCmdBuffer.map();
+    drawCmds.cnt = vertexOffsets.cnt;
+    for(size_t i = 0; i < drawCmds.cnt; i++) {
+      drawCmds[i] = vk::DrawIndexedIndirectCommand(
+          indexOffsets[i+1] - indexOffsets[i],
+          instanceOffsets[i+1] - instanceOffsets[i],
+          indexOffsets[i],
+          vertexOffsets[i],
+          instanceOffsets[i]);
+    }
+    drawCmdBuffer.copy();
+  }
+
+  void Scene::buildRenderTargets(void)
+  {
+  
+  }
+  
   Scene::~Scene()
   {
     for(vk::Framebuffer &frame : frames)

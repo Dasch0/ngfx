@@ -12,6 +12,7 @@
  * https://vulkan-tutorial.com/en/
  */
 
+#include "glm/ext/matrix_float4x4.hpp"
 #include <iostream>
 #include <cstring>
 #include <optional>
@@ -277,7 +278,7 @@ namespace ngfx {
    *  Intermediate render targets are not supported 
    */
   struct RenderTarget {
-  
+    vmaCreateImage
   };
   
   /*
@@ -356,17 +357,18 @@ namespace ngfx {
       Handle<vk::DrawIndexedIndirectCommand> drawCmds;
       // TODO: Determine if there is a way to use mapping to remove need
       // for the unified Instances buffer
-      Handle<Handle<Instance>> instances;
-      Handle<Instance> unifiedInstances;
+      Handle<Instance> instances;
+      Handle<vk::DeviceSize> instanceOffsets;
       Handle<Camera> cameras;
+      Handle<glm::mat4> viewProjections;
       Handle<RenderTarget> targets;
 
       // Buffers for GPU side resources
       gBuffer vertexBuffer;
       gBuffer indexBuffer;
-      gBuffer drawCmdBufffer;
+      gBuffer drawCmdBuffer;
       gBuffer instanceBuffer;
-      gBuffer cameraBuffer;
+      gBuffer viewProjectionBuffer;
       gBuffer targetBuffer;
 
       vk::RenderPass pass;
@@ -384,7 +386,10 @@ namespace ngfx {
 
       Scene(Context *c);
       void loadMeshes(Handle<Mesh> meshes);
-      void initInstances(Handle<Handle<Instance>> instanceTable);
+      void initInstances(Handle<size_t> instanceCounts);
+      void initCameras(size_t count);
+      void buildIndirectDrawCommands();
+      void buildRenderTargets();
       ~Scene();
 
       private:

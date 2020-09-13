@@ -2,6 +2,7 @@
 #define CONTEXT_H
 
 #include <vulkan/vulkan.hpp>
+#include "GLFW/glfw3.h"
 #include "config.hpp"
 #include "util.hpp"
 
