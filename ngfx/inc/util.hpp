@@ -123,7 +123,7 @@ namespace ngfx
         uint32_t typeFilter,
         vk::MemoryPropertyFlags requiredProps);
 
-    vk::SampleCountFlags getMaxUsableSampleCount(vk::PhysicalDevice *d);
+    vk::SampleCountFlagBits getMaxUsableSampleCount(vk::PhysicalDevice *d);
   }
 }
 #endif // UTIL_H

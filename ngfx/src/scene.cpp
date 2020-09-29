@@ -5,7 +5,7 @@
 namespace ngfx
 {
   Scene::Scene(Context *pContext)
-    : c(pContext)
+    : c(pContext), numTargets(0)
   {
 //    // RenderPass
 //    vk::AttachmentDescription
@@ -243,7 +243,7 @@ namespace ngfx
     cameras = alloc<Camera>(count);
     viewProjectionBuffer.init(
         sizeof(glm::mat4) * count,
-        vk::BufferUsageFlagBits::eUniformBuffer);
+        vk::BufferUsageFlagBits::eStorageBuffer);
     
     viewProjections.ptr = (glm::mat4 *) viewProjectionBuffer.map();
     viewProjections.cnt = count;
@@ -265,9 +265,103 @@ namespace ngfx
     drawCmdBuffer.copy();
   }
 
-  void Scene::buildRenderTargets(void)
+  void Scene::initTargets(size_t maxRenderTargets)
   {
+    targets = alloc<RenderTarget>(maxRenderTargets);
+    numTargets = 0;
+  }
+
+  void Scene::addTarget(uint32_t width, uint32_t height)
+  {
+    assert(numTargets < targets.cnt);
   
+    vk::ImageCreateInfo imageInfo(
+        vk::ImageCreateFlags(),
+        vk::ImageType::e2D,
+        vk::Format::eR8G8B8A8Srgb,
+        vk::Extent3D(width, height, 1),
+        1,
+        1,
+        vk::SampleCountFlagBits::e1,
+        vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eColorAttachment
+        | vk::ImageUsageFlagBits::eSampled
+        | vk::ImageUsageFlagBits::eTransferSrc,
+        vk::SharingMode::eExclusive);
+
+    vk::ImageCreateInfo colorInfo(
+        vk::ImageCreateFlags(),
+        vk::ImageType::e2D,
+        vk::Format::eR8G8B8A8Srgb,
+        vk::Extent3D(width, height, 1),
+        1,
+        1,
+        c->msaaSamples,
+        vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eColorAttachment
+        | vk::ImageUsageFlagBits::eTransientAttachment,
+        vk::SharingMode::eExclusive);
+
+    vk::ImageCreateInfo depthInfo(
+        vk::ImageCreateFlags(),
+        vk::ImageType::e2D,
+        vk::Format::eR8G8B8A8Srgb,
+        vk::Extent3D(width, height, 1),
+        1,
+        1,
+        c->msaaSamples,
+        vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eDepthStencilAttachment,
+        vk::SharingMode::eExclusive);
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+    vmaCreateImage(
+        c->allocator,
+        (VkImageCreateInfo *) &imageInfo,
+        &allocInfo,
+        (VkImage *) &targets[numTargets].image,
+        &targets[numTargets].imageAlloc,
+        nullptr);
+    vmaCreateImage(
+        c->allocator,
+        (VkImageCreateInfo *) &colorInfo,
+        &allocInfo,
+        (VkImage *) &targets[numTargets].color,
+        &targets[numTargets].imageAlloc,
+        nullptr);
+    vmaCreateImage(
+        c->allocator,
+        (VkImageCreateInfo *) &depthInfo,
+        &allocInfo,
+        (VkImage *) &targets[numTargets].depth,
+        &targets[numTargets].imageAlloc,
+        nullptr);
+
+    vk::ImageViewCreateInfo viewCI(
+        vk::ImageViewCreateFlags(),
+        targets[numTargets].image,
+        vk::ImageViewType::e2D,
+        vk::Format::eR8G8B8A8Srgb,
+        vk::ComponentMapping(),
+        vk::ImageSubresourceRange(
+          vk::ImageAspectFlagBits::eColor,
+          0, //baseMipLevel
+          1, //levelCount
+          0, //baseArrayLayer
+          1)
+        ); //layerCount
+
+    c->device.createImageView(&viewCI, nullptr, &targets[numTargets].imageView);
+    numTargets++;
+  }
+
+  void Scene::buildDefaultTargets(void)
+  {
+    for(size_t i = 0; i < cameras.cnt; i++) {
+      addTarget(cameras[i].width, cameras[i].height);
+    }
   }
   
   Scene::~Scene()

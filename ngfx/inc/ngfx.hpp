@@ -34,7 +34,6 @@
 #include "util.hpp"
 
 namespace ngfx {
-
   /* Basic memory arena implementation for storing renderer data
    * TODO: expand this, maybe move to external library
    */
@@ -169,17 +168,18 @@ namespace ngfx {
    */
   class Camera {
     public:
+      glm::float64 width, height;
       glm::vec3 pos;
       glm::float64 pitch, yaw, roll;
       
       glm::mat4 view, proj, cam;
 
-      Camera(vk::Extent2D extent)
+      Camera(vk::Extent2D extent) : width(extent.width), height(extent.height)
       {
         // Set projection matrix
         proj = glm::perspective(
             glm::radians(90.0),
-            (glm::float64) (extent.width / extent.height),
+            (glm::float64) (width / height),
             0.1,
             1000.0);
         
@@ -278,7 +278,17 @@ namespace ngfx {
    *  Intermediate render targets are not supported 
    */
   struct RenderTarget {
-    vmaCreateImage
+    vk::Image image;
+    vk::Image color;
+    vk::Image depth;
+
+    vk::ImageView imageView;
+    vk::ImageView colorView;
+    vk::ImageView depthView;
+
+    VmaAllocation imageAlloc;
+    VmaAllocation colorAlloc;
+    VmaAllocation depthAlloc;
   };
   
   /*
@@ -312,7 +322,7 @@ namespace ngfx {
     vk::CommandPool cmdPool; // Generic command pool
     vk::CommandPool transferPool; // Dedicated async transfer pool
     // Useful configuration info
-    vk::SampleCountFlags msaaSamples;
+    vk::SampleCountFlagBits msaaSamples;
     Context();
     ~Context();
   };
@@ -347,8 +357,9 @@ namespace ngfx {
    * Scene
    *  Core struct for rendering mesh objects to render targets
    */
-  struct Scene
+  class Scene
     {
+    public:
       // Handles to CPU side resources
       Handle<Vertex> vertices;
       Handle<uint16_t> indices;
@@ -362,7 +373,7 @@ namespace ngfx {
       Handle<Camera> cameras;
       Handle<glm::mat4> viewProjections;
       Handle<RenderTarget> targets;
-
+      size_t numTargets;
       // Buffers for GPU side resources
       gBuffer vertexBuffer;
       gBuffer indexBuffer;
@@ -389,12 +400,18 @@ namespace ngfx {
       void initInstances(Handle<size_t> instanceCounts);
       void initCameras(size_t count);
       void buildIndirectDrawCommands();
-      void buildRenderTargets();
+      
+      // Initializes render target list
+      void initTargets(size_t maxRenderTargets);
+      // Adds a new target to the render graph
+      void addTarget(uint32_t width, uint32_t height);
+      // Builds a render target for each initialized camera
+      void buildDefaultTargets();
+
       ~Scene();
 
-      private:
-        void createDescriptorPool(void);
-        void createDescriptorSets(void);
+      void createDescriptorPool(void);
+      void createDescriptorSets(void);
     };
 }
 #endif // NGFX_H

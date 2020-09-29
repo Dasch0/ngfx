@@ -441,14 +441,15 @@ namespace ngfx
       throw std::runtime_error("failed to find suitable memory type!");
     }
     
-    vk::SampleCountFlags getMaxUsableSampleCount(vk::PhysicalDevice *d) {
+    vk::SampleCountFlagBits getMaxUsableSampleCount(vk::PhysicalDevice *d) {
       vk::PhysicalDeviceProperties prop = d->getProperties();
 
       vk::SampleCountFlags counts =
         prop.limits.framebufferColorSampleCounts 
         & prop.limits.framebufferDepthSampleCounts;
-
-      return vk::SampleCountFlags(counts);
+      
+      // Madness required to cast flags back to primative type
+      return vk::SampleCountFlagBits((vk::SampleCountFlags::MaskType) counts);
     }
   }
 }
