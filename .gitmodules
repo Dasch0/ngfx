@@ -4,3 +4,6 @@
 [submodule "lib/glfw"]
 	path = lib/glfw
 	url = https://github.com/glfw/glfw
+[submodule "lib/arbor"]
+	path = lib/arbor
+	url = https://www.github.com/Dasch0/arbor.git

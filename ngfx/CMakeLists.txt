@@ -31,7 +31,7 @@ set(
 add_executable(ngfx ${SOURCES} ${HEADERS})
 target_include_directories(ngfx PUBLIC "inc")
 target_include_directories(ngfx PRIVATE Vulkan::Vulkan)
-target_link_libraries(ngfx glfw glm Vulkan::Vulkan)
+target_link_libraries(ngfx glfw glm arbor Vulkan::Vulkan)
 
 # Add resources
 file(COPY "assets" DESTINATION "./")
